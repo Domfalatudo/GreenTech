@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoQuest — GreenTech</title>
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <link rel="stylesheet" href="../assets/css/game-page.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="header scrolled" id="header">
+    <nav class="nav container">
+      <a href="../index.html" class="nav__logo">
+        <svg class="nav__logo-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        <span class="nav__logo-text">GreenTech</span>
+      </a>
+      <a href="../index.html" class="btn btn--ghost" style="font-size:0.875rem;padding:0.5rem 1.25rem;">← Voltar</a>
+    </nav>
+  </header>
+
+  <main class="game-page">
+
+    <!-- HUD — Estatísticas do jogador -->
+    <div class="game-hud container" role="status" aria-label="Estatísticas do jogo">
+      <div class="hud-stat">
+        <span class="hud-stat__icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        </span>
+        <div>
+          <span class="hud-stat__val" id="treeCount">0</span>
+          <span class="hud-stat__lbl">Árvores</span>
+        </div>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-stat__icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        </span>
+        <div>
+          <span class="hud-stat__val" id="scoreCount">0</span>
+          <span class="hud-stat__lbl">Pontos</span>
+        </div>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-stat__icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+        </span>
+        <div>
+          <span class="hud-stat__val" id="levelCount">1</span>
+          <span class="hud-stat__lbl">Nível</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARENA DO QUIZ -->
+    <div class="game-arena container">
+      <header class="game-arena__header">
+        <h1 class="game-arena__title">EcoQuest</h1>
+        <p class="game-arena__subtitle">Responda sobre tecnologia e natureza para avançar!</p>
+      </header>
+
+      <!-- Canvas com fundo visual -->
+      <div class="game-canvas" id="gameCanvas" aria-live="polite">
+        <div class="game-canvas__bg" aria-hidden="true">
+          <img src="https://images.unsplash.com/photo-1448375240586-882707db888b?w=800&q=80" alt="" />
+          <div class="game-canvas__overlay"></div>
+        </div>
+
+        <!-- Campo onde as perguntas e feedback são renderizados -->
+        <div class="game-canvas__field" id="gameField">
+
+          <!-- Estado inicial: tela de boas-vindas (visível antes de iniciar) -->
+          <div class="game-start">
+            <div class="game-start__icon" aria-hidden="true">🌱</div>
+            <h3>Bem-vindo ao EcoQuest!</h3>
+            <p>Teste seus conhecimentos sobre tecnologia e meio ambiente.<br />Responda corretamente para plantar árvores virtuais.</p>
+            <ul class="game-start__features">
+              <li>🌿 Cada acerto planta uma árvore</li>
+              <li>⚡ Respostas rápidas valem mais pontos</li>
+              <li>🏆 Avance de nível respondendo perguntas</li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Controles -->
+      <div class="game-controls">
+        <button class="btn btn--neon" id="startBtn" type="button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="10" y1="12" y2="12"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="15" x2="15.01" y1="13" y2="13"/><line x1="18" x2="18.01" y1="11" y2="11"/><rect width="20" height="12" x="2" y="6" rx="2"/></svg>
+          Iniciar Jogo
+        </button>
+        <button class="btn btn--outline" id="resetBtn" type="button" disabled>↺ Reiniciar</button>
+      </div>
+
+      <!-- Barra de progresso -->
+      <div class="game-progress" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+        <div class="game-progress__label">
+          <span>Progresso do Nível</span>
+          <span id="progressPct">0%</span>
+        </div>
+        <div class="game-progress__bar">
+          <div class="game-progress__fill" id="progressFill"></div>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__bottom" style="border-top:0.0625rem solid rgba(255,255,255,0.1);padding-top:1.5rem;">
+        <p class="footer__copy">© 2026 GreenTech · UNASP.</p>
+        <p class="footer__made">Feito com
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#39ff7a" stroke="#39ff7a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          para o planeta</p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
