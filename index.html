@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GreenTech — Tecnologia a Serviço da Natureza</title>
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <header class="header" id="header">
+    <nav class="nav container">
+      <a href="#home" class="nav__logo">
+        <svg class="nav__logo-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+        <span class="nav__logo-text">GreenTech</span>
+      </a>
+
+      <button class="nav__toggle" id="navToggle" aria-label="Abrir menu">
+        <span></span><span></span><span></span>
+      </button>
+
+      <ul class="nav__menu" id="navMenu">
+        <li><a href="#home"     class="nav__link active">Home</a></li>
+        <li><a href="#conteudo" class="nav__link">Conteúdo</a></li>
+        <li><a href="#sobre"    class="nav__link">Sobre</a></li>
+        <li><a href="#game"     class="nav__link">Game</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- HERO -->
+    <section class="hero" id="home">
+      <div class="hero__bg">
+        <img
+          src="https://images.unsplash.com/photo-1448375240586-882707db888b?w=1600&q=80"
+          alt="Floresta densa vista de cima"
+          class="hero__img"
+        />
+        <div class="hero__overlay"></div>
+      </div>
+
+      <div class="hero__content container">
+        <div class="hero__badge">
+          <span class="hero__badge-dot"></span>
+          Tecnologia Sustentável · 2026
+        </div>
+
+        <h1 class="hero__title">
+          Tecnologia que<br />
+          <span class="hero__title-accent">Protege a Natureza</span>
+        </h1>
+
+        <p class="hero__subtitle">
+          Exploramos como inteligência artificial, IoT, energia limpa e dados
+          ambientais estão transformando a relação entre tecnologia e natureza.
+        </p>
+
+        <div class="hero__actions">
+          <a href="#conteudo" class="btn btn--primary">Explorar Agora</a>
+          <a href="#game"     class="btn btn--ghost">Jogar o Game</a>
+        </div>
+
+        <div class="hero__stats">
+          <div class="hero__stat">
+            <span class="hero__stat-value">+40%</span>
+            <span class="hero__stat-label">Redução de Emissões</span>
+          </div>
+          <div class="hero__stat-divider"></div>
+          <div class="hero__stat">
+            <span class="hero__stat-value">180+</span>
+            <span class="hero__stat-label">Tecnologias Verdes</span>
+          </div>
+          <div class="hero__stat-divider"></div>
+          <div class="hero__stat">
+            <span class="hero__stat-value">2M+</span>
+            <span class="hero__stat-label">Usuários</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero__scroll">
+        <span class="hero__scroll-line"></span>
+        <span class="hero__scroll-text">Scroll</span>
+      </div>
+    </section>
+
+    <!-- CONTEÚDO / CARDS -->
+    <section class="highlights" id="conteudo">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">O que abordamos</span>
+          <h2 class="section-title">Como a Tecnologia Ajuda a Natureza</h2>
+          <p class="section-desc">
+            Quatro áreas onde inovação tecnológica e consciência ambiental
+            se encontram para criar um futuro mais sustentável.
+          </p>
+        </div>
+
+        <div class="highlights__grid">
+
+          <a href="pages/ia-ambiental.html" class="card card--green card--clickable">
+            <div class="card__icon-wrap">
+              <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                <path d="M12 8v8M8 12h8"/>
+              </svg>
+            </div>
+            <h3 class="card__title">IA Ambiental</h3>
+            <p class="card__text">
+              Algoritmos de inteligência artificial monitoram ecossistemas,
+              preveem desastres naturais e identificam espécies em risco
+              com precisão sem precedentes.
+            </p>
+            <span class="card__link">Saiba mais →</span>
+          </a>
+
+          <div class="card card--green">
+            <div class="card__icon-wrap">
+              <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="2" y="3" width="20" height="14" rx="2"/>
+                <path d="M8 21h8M12 17v4"/>
+                <path d="M7 8l3 3 2-2 3 3"/>
+              </svg>
+            </div>
+            <h3 class="card__title">Energia Limpa</h3>
+            <p class="card__text">
+              Painéis solares inteligentes, turbinas eólicas conectadas e
+              redes de energia descentralizadas reduzem emissões e
+              dependência de combustíveis fósseis.
+            </p>
+            <span class="card__link">Em breve →</span>
+          </div>
+
+          <div class="card card--glass">
+            <div class="card__icon-wrap">
+              <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+              </svg>
+            </div>
+            <h3 class="card__title">IoT & Sensores</h3>
+            <p class="card__text">
+              Redes de sensores conectados monitoram qualidade do ar, da água
+              e do solo em tempo real, gerando dados que guiam políticas
+              ambientais e ações de conservação.
+            </p>
+            <span class="card__link">Em breve →</span>
+          </div>
+
+          <div class="card card--neon">
+            <div class="card__icon-wrap">
+              <svg class="card__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+            </div>
+            <h3 class="card__title">Cidades Inteligentes</h3>
+            <p class="card__text">
+              Infraestrutura urbana conectada reduz desperdício de energia,
+              otimiza transporte público e cria espaços verdes planejados
+              com base em dados ambientais reais.
+            </p>
+            <span class="card__link">Em breve →</span>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- SOBRE -->
+    <section class="about" id="sobre">
+      <div class="container">
+
+        <div class="about__row about__row--reverse">
+          <div class="about__visual">
+            <div class="about__img-wrap">
+              <img
+                src="https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=800&q=80"
+                alt="Mãos plantando uma muda"
+                class="about__img"
+              />
+              <div class="about__img-badge">
+                <span class="about__img-badge-num">10+</span>
+                <span class="about__img-badge-txt">Anos de Impacto</span>
+              </div>
+            </div>
+          </div>
+          <div class="about__text">
+            <span class="section-tag">Nossa História</span>
+            <h2 class="section-title">Nascemos dentro de uma escola</h2>
+            <p class="about__desc">
+              A GreenTech nasceu no UNASP, quando um grupo de estudantes
+              com objetivos técnicos decidiu usar o conhecimento da sala de
+              aula para criar soluções reais em favor da natureza.
+            </p>
+            <p class="about__desc">
+              O que começou como um projeto acadêmico se tornou uma iniciativa
+              comprometida em mostrar como a tecnologia pode ser uma aliada
+              poderosa do meio ambiente.
+            </p>
+            <ul class="about__list">
+              <li class="about__list-item">
+                <span class="about__list-icon">✦</span>
+                Origem acadêmica no UNASP
+              </li>
+              <li class="about__list-item">
+                <span class="about__list-icon">✦</span>
+                Foco técnico em soluções ambientais reais
+              </li>
+              <li class="about__list-item">
+                <span class="about__list-icon">✦</span>
+                Tecnologia como ferramenta de impacto positivo
+              </li>
+            </ul>
+            <a href="pages/equipe.html" class="btn btn--primary">Conheça a Equipe</a>
+          </div>
+        </div>
+
+        <div class="about__row">
+          <div class="about__visual">
+            <div class="about__img-wrap">
+              <img
+                src="https://images.unsplash.com/photo-1473448912268-2022ce9509d8?w=800&q=80"
+                alt="Floresta densa com luz solar"
+                class="about__img"
+              />
+            </div>
+          </div>
+          <div class="about__text">
+            <span class="section-tag">Nossa Abordagem</span>
+            <h2 class="section-title">Dados que revelam o impacto real</h2>
+            <p class="about__desc">
+              Reunimos pesquisas, cases e inovações de todo o mundo para
+              mostrar como satélites, drones, machine learning e blockchain
+              estão sendo usados na conservação ambiental.
+            </p>
+            <p class="about__desc">
+              Nossa plataforma processa e traduz informações complexas em
+              conteúdo acessível, conectando tecnologia e natureza de forma
+              clara e inspiradora.
+            </p>
+            <a href="#" class="btn btn--outline">Ver Conteúdo</a>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- GAME -->
+    <section class="game" id="game">
+      <div class="game__bg">
+        <img
+          src="https://images.unsplash.com/photo-1518531933037-91b2f5f229cc?w=1600&q=80"
+          alt="Floresta tropical"
+          class="game__bg-img"
+        />
+        <div class="game__overlay"></div>
+      </div>
+
+      <div class="container game__content">
+        <div class="game__info">
+          <span class="section-tag section-tag--light">Gamificação Ambiental</span>
+          <h2 class="section-title section-title--light">
+            Aprenda Jogando<br />sobre o Planeta
+          </h2>
+          <p class="game__desc">
+            No EcoQuest, você enfrenta desafios sobre tecnologia e meio ambiente.
+            Cada missão ensina como inovações reais estão protegendo ecossistemas
+            ao redor do mundo.
+          </p>
+          <ul class="game__features">
+            <li class="game__feature">
+              <span class="game__feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96-.46 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96-.46 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+              </span>
+              <span>Quizzes sobre IA, IoT e energia limpa</span>
+            </li>
+            <li class="game__feature">
+              <span class="game__feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/></svg>
+              </span>
+              <span>Explore biomas e tecnologias por região</span>
+            </li>
+            <li class="game__feature">
+              <span class="game__feature-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+              </span>
+              <span>Ranking de guardiões do conhecimento verde</span>
+            </li>
+          </ul>
+          <a href="pages/game.html" class="btn btn--neon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" x2="10" y1="12" y2="12"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="15" x2="15.01" y1="13" y2="13"/><line x1="18" x2="18.01" y1="11" y2="11"/><rect width="20" height="12" x="2" y="6" rx="2"/></svg>
+            Ver o Quiz
+          </a>
+        </div>
+
+        <div class="game__mockup">
+          <div class="game__mockup-frame">
+            <div class="game__mockup-screen">
+              <div class="game__mockup-header">
+                <span class="game__mockup-dot"></span>
+                <span class="game__mockup-dot"></span>
+                <span class="game__mockup-dot"></span>
+                <span class="game__mockup-title">EcoQuest</span>
+              </div>
+              <div class="game__mockup-body">
+                <div class="game__mockup-map">
+                  <div class="game__mockup-tree t1">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                  <div class="game__mockup-tree t2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                  <div class="game__mockup-tree t3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                  <div class="game__mockup-tree t4">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                  <div class="game__mockup-tree t5">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                  <div class="game__mockup-tree t6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+                  </div>
+                </div>
+                <div class="game__mockup-stats">
+                  <div class="game__mockup-stat">
+                    <span class="game__mockup-stat-val">1,247</span>
+                    <span class="game__mockup-stat-lbl">Árvores</span>
+                  </div>
+                  <div class="game__mockup-stat">
+                    <span class="game__mockup-stat-val">Lv. 42</span>
+                    <span class="game__mockup-stat-lbl">Nível</span>
+                  </div>
+                  <div class="game__mockup-stat">
+                    <span class="game__mockup-stat-val">#128</span>
+                    <span class="game__mockup-stat-lbl">Ranking</span>
+                  </div>
+                </div>
+                <div class="game__mockup-progress">
+                  <div class="game__mockup-progress-bar">
+                    <div class="game__mockup-progress-fill"></div>
+                  </div>
+                  <span class="game__mockup-progress-txt">Próxima missão: 73%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IMPACTO -->
+    <section class="impact">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">Nosso Impacto</span>
+          <h2 class="section-title">O que já conquistamos</h2>
+        </div>
+
+        <div class="impact__grid impact__grid--five">
+          <div class="impact__card">
+            <div class="impact__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <div class="impact__number">
+              <span class="impact__value">5</span>
+            </div>
+            <p class="impact__label">Membros no Grupo</p>
+            <div class="impact__bar"><div class="impact__bar-fill" style="--w:75%;width:75%"></div></div>
+          </div>
+          <div class="impact__card">
+            <div class="impact__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v11m0 0H5a2 2 0 0 1-2-2V9m6 5h10a2 2 0 0 0 2-2V9m0 0H3"/></svg>
+            </div>
+            <div class="impact__number">
+              <span class="impact__value">8</span>
+            </div>
+            <p class="impact__label">Tecnologias Estudadas</p>
+            <div class="impact__bar"><div class="impact__bar-fill" style="--w:55%;width:55%"></div></div>
+          </div>
+          <div class="impact__card">
+            <div class="impact__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <div class="impact__number">
+              <span class="impact__value">1</span>
+            </div>
+            <p class="impact__label">Escola de Origem</p>
+            <div class="impact__bar"><div class="impact__bar-fill" style="--w:100%;width:100%"></div></div>
+          </div>
+          <div class="impact__card">
+            <div class="impact__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+            </div>
+            <div class="impact__number">
+              <span class="impact__value">3</span>
+            </div>
+            <p class="impact__label">Áreas de Atuação</p>
+            <div class="impact__bar"><div class="impact__bar-fill" style="--w:60%;width:60%"></div></div>
+          </div>
+          <div class="impact__card">
+            <div class="impact__icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            </div>
+            <div class="impact__number">
+              <span class="impact__value">100</span>
+              <span class="impact__suffix">%</span>
+            </div>
+            <p class="impact__label">Dedicação</p>
+            <div class="impact__bar"><div class="impact__bar-fill" style="--w:100%;width:100%"></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="cta__bg">
+        <img
+          src="https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1600&q=80"
+          alt="Floresta iluminada"
+          class="cta__bg-img"
+        />
+        <div class="cta__overlay"></div>
+      </div>
+      <div class="container cta__content">
+        <div class="cta__badge">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+          Junte-se ao movimento
+        </div>
+        <h2 class="cta__title">
+          O planeta precisa<br />
+          <span class="cta__title-accent">de inovação agora</span>
+        </h2>
+        <p class="cta__desc">
+          Explore os conteúdos sobre tecnologia verde e faça parte da
+          comunidade de inovação sustentável.
+        </p>
+        <div class="cta__actions">
+          <a href="pages/equipe.html" class="btn btn--neon btn--lg">Conheça a Equipe</a>
+          <a href="#sobre"            class="btn btn--ghost btn--lg">Saber Mais</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__top">
+        <div class="footer__brand">
+          <a href="#home" class="footer__logo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
+            GreenTech
+          </a>
+          <p class="footer__tagline">
+            Tecnologia a serviço do planeta.<br />
+            Cada inovação, um passo rumo ao futuro sustentável.
+          </p>
+          <div class="footer__social">
+            <a href="#" class="footer__social-link" aria-label="Instagram">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="0.5" fill="currentColor"/></svg>
+            </a>
+            <a href="#" class="footer__social-link" aria-label="Twitter/X">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+            </a>
+            <a href="#" class="footer__social-link" aria-label="LinkedIn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="3"/><path d="M7 10v7M7 7v.01M12 17v-4a2 2 0 0 1 4 0v4M12 10v7"/></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer__links">
+          <div class="footer__col">
+            <h4 class="footer__col-title">Plataforma</h4>
+            <ul class="footer__list">
+              <li><a href="#home"     class="footer__link">Home</a></li>
+              <li><a href="#conteudo" class="footer__link">Conteúdo</a></li>
+              <li><a href="#game"     class="footer__link">Game</a></li>
+              <li><a href="#sobre"    class="footer__link">Sobre</a></li>
+            </ul>
+          </div>
+          <div class="footer__col">
+            <h4 class="footer__col-title">Páginas</h4>
+            <ul class="footer__list">
+              <li><a href="pages/ia-ambiental.html" class="footer__link">IA Ambiental</a></li>
+              <li><a href="pages/equipe.html"        class="footer__link">Equipe</a></li>
+              <li><a href="pages/game.html"          class="footer__link">Quiz</a></li>
+            </ul>
+          </div>
+          <div class="footer__col">
+            <h4 class="footer__col-title">Legal</h4>
+            <ul class="footer__list">
+              <li><a href="#" class="footer__link">Privacidade</a></li>
+              <li><a href="#" class="footer__link">Termos de Uso</a></li>
+              <li><a href="#" class="footer__link">Contato</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer__bottom">
+        <p class="footer__copy">© 2026 GreenTech. Todos os direitos reservados.</p>
+        <p class="footer__made">Feito com
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="#39ff7a" stroke="#39ff7a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle" aria-hidden="true"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+          para o planeta</p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
