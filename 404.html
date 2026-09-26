@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>404 — Página não encontrada | Raiz</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=Beau+Rivage&family=Karla:wght@400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles/header.css" />
+    <style>
+        :root {
+            box-sizing: border-box;
+            --white: #ffffff;
+            --pale: #dcefdd;
+            --pale-soft: #eef8ee;
+            --dark: #16332a;
+            --dark-2: #0e2019;
+            --text: #17271f;
+            --muted: #5c7266;
+            --serif: "Fraunces", serif;
+            --script: "Beau Rivage", cursive;
+            --sans: "Karla", sans-serif;
+        }
+        *, *::before, *::after { box-sizing: inherit; }
+        body {
+            margin: 0;
+            background: var(--white);
+            color: var(--text);
+            font-family: var(--sans);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --white: #0e1913; --pale: #17281f; --pale-soft: #142219;
+                --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b;
+            }
+        }
+        :root[data-theme="dark"] {
+            --white: #0e1913; --pale: #17281f; --pale-soft: #142219;
+            --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b;
+        }
+
+        header.site {
+            position: sticky; top: 0;
+            background: color-mix(in srgb, var(--white) 88%, transparent);
+            backdrop-filter: blur(10px);
+            z-index: 20;
+        }
+        .nav-inner {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 22px 32px; max-width: 1120px; margin: 0 auto;
+        }
+        .logo { font-family: var(--script); font-size: 2rem; color: var(--dark); text-decoration: none; }
+        nav.links { display: flex; gap: 36px; }
+        nav.links a { color: var(--text); text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+        nav.links a:hover { color: var(--dark); }
+        
+        main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 64px 32px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .not-found-content {
+            position: relative;
+            z-index: 2;
+            max-width: 600px;
+        }
+
+        .error-code {
+            font-family: var(--serif);
+            font-size: clamp(6rem, 15vw, 12rem);
+            font-weight: 300;
+            line-height: 1;
+            margin: 0;
+            color: var(--pale);
+            letter-spacing: -0.05em;
+            position: relative;
+            display: inline-block;
+        }
+
+        .error-code::after {
+            content: "404";
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            color: transparent;
+            -webkit-text-stroke: 1px var(--dark);
+            opacity: 0.3;
+        }
+
+        .message h1 {
+            font-family: var(--serif);
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 400;
+            color: var(--dark);
+            margin: -20px 0 24px;
+            position: relative;
+        }
+
+        .message h1 em {
+            font-family: var(--script);
+            font-size: 1.2em;
+            font-style: normal;
+        }
+
+        .message p {
+            font-size: 1.15rem;
+            color: var(--muted);
+            margin-bottom: 40px;
+            max-width: 42ch;
+            margin-inline: auto;
+        }
+
+        .btn-primary {
+            background: var(--dark);
+            color: var(--white);
+            border: none;
+            padding: 16px 36px;
+            border-radius: 999px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            background: var(--dark-2);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px color-mix(in srgb, var(--dark) 20%, transparent);
+        }
+
+        .background-shapes {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .shape {
+            position: absolute;
+            border-radius: 50%;
+            background: radial-gradient(circle, var(--pale) 0%, transparent 70%);
+            opacity: 0.5;
+            animation: float 20s infinite alternate ease-in-out;
+        }
+
+        .shape:nth-child(1) { width: 600px; height: 600px; top: -200px; left: -100px; animation-delay: 0s; }
+        .shape:nth-child(2) { width: 800px; height: 800px; bottom: -300px; right: -200px; animation-delay: -5s; background: radial-gradient(circle, var(--pale-soft) 0%, transparent 70%); }
+        .shape:nth-child(3) { width: 400px; height: 400px; top: 40%; left: 60%; animation-delay: -10s; }
+
+        @keyframes float {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            50% { transform: translate(50px, 30px) rotate(180deg); }
+            100% { transform: translate(-30px, -50px) rotate(360deg); }
+        }
+
+        @media (max-width: 760px) {
+            nav.links { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <header class="site">
+        <div class="nav-inner">
+            <a class="logo" href="index.html">Raiz</a>
+            <nav class="links">
+                <a href="index.html">Início</a>
+                <a href="pages/creators.html">Creators</a>
+                <a href="pages/conteudo-1.html">Conteúdo</a>
+                <a href="pages/jogo.html">Jogo</a>
+            </nav>
+            <div class="account" data-account></div>
+        </div>
+    </header>
+
+    <main>
+        <div class="background-shapes">
+            <div class="shape"></div>
+            <div class="shape"></div>
+            <div class="shape"></div>
+        </div>
+        
+        <div class="not-found-content">
+            <div class="error-code">404</div>
+            <div class="message">
+                <h1>Parece que você se <em>perdeu</em> do caminho</h1>
+                <p>A página que você está procurando não existe ou foi movida. Assim como na natureza, alguns caminhos mudam com o tempo.</p>
+                <a href="index.html" class="btn-primary">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                    </svg>
+                    Voltar à raiz
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/firebase-config.js"></script>
+    <script src="js/header.js"></script>
+    <script type="module" src="js/header-auth.js"></script>
+</body>
+</html>
