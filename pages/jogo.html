@@ -25,6 +25,11 @@
       --serif: "Fraunces", serif;
       --script: "Beau Rivage", cursive;
       --sans: "Karla", sans-serif;
+      --danger: #a4402f;
+      --ok: #3f7a4a;
+      --alerta: #ff6b35;
+      /* altura da faixa inferior: o mapa fica livre acima dela */
+      --hud-h: clamp(260px, 40vh, 320px);
       padding-top: env(safe-area-inset-top, 0px);
       padding-bottom: env(safe-area-inset-bottom, 0px);
     }
@@ -98,180 +103,426 @@
       touch-action: none;
     }
 
-    .topbar {
+    /* ==========================================================
+       HUD INFERIOR — 3 colunas alinhadas pela base (ver desenho)
+       [ loja + informações ] [ ferramentas / modo construção ] [ inventário ]
+       ========================================================== */
+    .hud {
       position: absolute;
       z-index: 22;
-      top: calc(var(--site-header-height) + 12px);
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content: center;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: grid;
+      grid-template-columns: minmax(150px, 200px) minmax(350px, 1fr) minmax(190px, 240px);
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "loja    informacoes  dir"
+        "bloco   ferramentas  dir";
+      align-items: stretch;
+      gap: 10px;
+      height: var(--hud-h);
+      padding: 0 24px calc(14px + env(safe-area-inset-bottom, 0px));
       pointer-events: none;
     }
 
-    .topbar .stat {
-      background: color-mix(in srgb, var(--white) 92%, transparent);
-      border: 1px solid var(--pale);
-      border-radius: 14px;
-      padding: 8px 14px;
-      backdrop-filter: blur(6px);
-      min-width: 88px;
-      text-align: center;
+    .hud > * {
+      pointer-events: auto;
+      min-height: 0;
     }
 
-    .topbar .k {
-      display: block;
-      font-size: 0.66rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--muted);
+    .hud-loja {
+      grid-area: loja;
+      display: flex;
     }
 
-    .topbar .v {
-      display: block;
-      font-family: var(--serif);
-      font-size: 1.05rem;
-      font-weight: 500;
-      color: var(--text);
-      line-height: 1.2;
+    .hud-bloco {
+      grid-area: bloco;
+      min-height: 0;
     }
 
-    .topbar .v.bom {
-      color: #3f7a4a;
-    }
-
-    .topbar .v.meio {
-      color: #b07f2a;
-    }
-
-    .topbar .v.ruim {
-      color: #a4402f;
-    }
-
-    .painel {
-      position: absolute;
-      z-index: 0.5;
-      left: 24px;
-      top: calc(var(--site-header-height) + 76px);
-      width: 300px;
-      background: color-mix(in srgb, var(--white) 93%, transparent);
-      border: 1px solid var(--pale);
-      border-radius: 18px;
-      padding: 20px;
-      margin-top: -15px;
-      backdrop-filter: blur(6px);
-      max-height: calc(100vh - var(--site-header-height) - 120px);
-      overflow-y: auto;
-
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-
-    .painel:-webkit-scrollbar {
+    .hud-renovar {
       display: none;
     }
 
-    .painel {
-      -ms-overflow-style: none;
+    /* informações: barra larga no meio, com os recursos da fazenda */
+    .hud-informacoes {
+      grid-area: informacoes;
+      min-width: 0;
     }
 
+    .hud-centro {
+      grid-area: ferramentas;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 6px;
+      min-width: 0;
+    }
 
-    .painel h2 {
+    .hud-dir {
+      grid-area: dir;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* cartão padrão do HUD */
+    .cartao {
+      background: color-mix(in srgb, var(--white) 96%, transparent);
+      border: 1px solid var(--pale);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(22, 51, 42, 0.12);
+      overflow-y: auto;
+      scrollbar-width: thin;
+    }
+
+    .cartao::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .cartao::-webkit-scrollbar-thumb {
+      background: var(--pale);
+      border-radius: 3px;
+    }
+
+    .cartao h2,
+    .cartao h3 {
       font-family: var(--serif);
       font-weight: 500;
-      font-size: 1.05rem;
-      margin: 0 0 14px;
+      font-size: 0.92rem;
+      margin: 0 0 10px;
+      color: var(--dark);
+    }
+
+    /* --- loja (topo da coluna esquerda) --- */
+    .botao-loja {
+      width: 100%;
+      flex: 0 0 auto;
+      border: none;
+      background: linear-gradient(135deg, var(--dark) 0%, color-mix(in srgb, var(--dark) 90%, black) 100%);
+      color: var(--pale);
+      border-radius: 14px;
+      padding: 12px 14px;
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.2);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .botao-loja:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(22, 51, 42, 0.3);
+    }
+
+    .botao-loja:active {
+      transform: scale(0.98);
+    }
+
+    /* listas horizontais de "rótulo: valor" (informações da fazenda) */
+    .info-lista {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+      align-items: center;
+    }
+
+    .info-lista li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.82rem;
+      line-height: 1.3;
+      min-width: 0;
+      padding: 5px 10px;
+      background: color-mix(in srgb, var(--pale-soft) 60%, transparent);
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      white-space: nowrap;
+    }
+
+    .info-lista li:hover {
+      background: var(--pale-soft);
+      transform: translateY(-1px);
+    }
+
+    .info-lista .rot {
+      color: var(--muted);
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .info-lista .rot.icone-info {
+      width: 20px;
+      height: 20px;
+      padding: 0;
+      margin: 0;
+    }
+
+    .info-lista .rot svg {
+      color: var(--dark);
+      opacity: 0.75;
+      transition: all 0.2s ease;
+    }
+
+    .info-lista li:hover .rot svg {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+
+    /* Cores específicas para cada ícone */
+    .info-lista [data-icone="dinheiro"] svg {
+      color: #d4af37;
+    }
+
+    .info-lista [data-icone="energia"] svg {
+      color: #fbbf24;
+    }
+
+    .info-lista [data-icone="agua"] svg {
+      color: #3b82f6;
+    }
+
+    .info-lista [data-icone="nivel"] svg {
+      color: #f59e0b;
+    }
+
+    .info-lista [data-icone="xp"] svg {
+      color: #8b5cf6;
+    }
+
+    .info-lista [data-icone="pegada"] svg {
+      color: #10b981;
+    }
+
+    .info-lista [data-ui="icone-tempo"] svg {
+      color: #f59e0b;
+    }
+
+    .info-lista [data-ui="icone-clima"] svg {
+      color: #3b82f6;
+    }
+
+    .info-lista .rot::after {
+      content: none;
+    }
+
+    .info-lista .val {
+      font-family: var(--serif);
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--dark);
+    }
+
+    .info-lista .val.bom {
+      color: #3f7a4a;
+    }
+
+    .info-lista .val.meio {
+      color: #b07f2a;
+    }
+
+    .info-lista .val.ruim {
+      color: #a4402f;
+    }
+
+    /* --- barra central: ferramentas em linha horizontal --- */
+    .cabecalho-centro {
+      display: none;
+    }
+
+    .cartao[hidden] {
+      display: none;
+    }
+
+    .barra-ferramentas {
+      padding: 10px 12px;
+      background: color-mix(in srgb, var(--white) 97%, transparent);
     }
 
     .ferramentas {
-      display: grid;
+      display: flex;
       gap: 6px;
-      margin-bottom: 14px;
+      padding: 0;
+      justify-content: space-evenly;
+      align-items: center;
+      flex-wrap: nowrap;
+      width: 100%;
     }
 
     .ferramentas button {
       display: flex;
       align-items: center;
-      gap: 10px;
-      border: 1px solid var(--pale);
+      justify-content: center;
+      width: 100%;
+      height: 48px;
+      flex: 1 1 0;
+      min-width: 48px;
+      max-width: 100%;
+      aspect-ratio: 1;
+      border: 2px solid transparent;
       background: var(--white);
-      border-radius: 11px;
-      padding: 10px 13px;
+      border-radius: 50%;
+      padding: 0;
       cursor: pointer;
-      font-family: var(--sans);
-      font-size: 0.85rem;
-      color: var(--text);
-      text-align: left;
-      transition: all 0.2s ease;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: visible;
+      box-shadow: 0 2px 8px rgba(22, 51, 42, 0.1);
+      font-size: 0;
+      color: transparent;
+    }
+
+    .ferramentas button * {
+      pointer-events: none;
+    }
+
+    .ferramentas button svg {
+      pointer-events: none;
+    }
+
+    .ferramentas button::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      background: linear-gradient(135deg, var(--pale-soft) 0%, transparent 100%);
+      border-radius: 50%;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: -1;
+    }
+
+    .ferramentas button:hover::before {
+      opacity: 1;
     }
 
     .ferramentas button:hover {
       border-color: var(--dark);
-      background: var(--pale-soft);
-      transform: translateX(2px);
+      transform: translateY(-4px) scale(1.1);
+      box-shadow: 0 8px 20px rgba(22, 51, 42, 0.2);
     }
 
     .ferramentas button.ativo {
       border-color: var(--dark);
-      background: var(--pale-soft);
-      box-shadow: 0 2px 8px rgba(22, 51, 42, 0.1);
+      background: linear-gradient(135deg, var(--dark) 0%, color-mix(in srgb, var(--dark) 85%, black) 100%);
+      box-shadow: 0 8px 24px rgba(22, 51, 42, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      transform: translateY(-4px) scale(1.05);
+    }
+
+    .ferramentas button.ativo::before {
+      display: none;
+    }
+
+    .ferramentas button.ativo::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border: 2px solid var(--dark);
+      border-radius: 50%;
+      opacity: 0.3;
+      animation: pulseRing 2s ease-in-out infinite;
+    }
+
+    @keyframes pulseRing {
+      0%, 100% { 
+        transform: scale(1);
+        opacity: 0.3;
+      }
+      50% { 
+        transform: scale(1.1);
+        opacity: 0.6;
+      }
     }
 
     .ferramentas button svg {
-      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
       opacity: 0.85;
-      transition: transform 0.2s ease;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
     }
 
     .ferramentas button:hover svg {
-      transform: scale(1.1);
       opacity: 1;
+      transform: scale(1.15) rotate(5deg);
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
     }
 
     .ferramentas button.ativo svg {
       opacity: 1;
-      animation: pulse 2s ease-in-out infinite;
+      color: var(--pale) !important;
+      filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.5));
+      animation: iconPulse 2s ease-in-out infinite;
     }
 
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+    @keyframes iconPulse {
+      0%, 100% { 
+        transform: scale(1);
+      }
+      50% { 
+        transform: scale(1.08);
+      }
     }
 
-    .painel label.sel {
+    /* Esconder completamente qualquer texto dos botões */
+    .ferramentas button {
+      font-size: 0 !important;
+      line-height: 0 !important;
+      text-indent: -9999px;
+      overflow: hidden;
+    }
+
+    .ferramentas button svg {
+      text-indent: 0;
+    }
+
+    .ferramentas button svg + * {
+      display: none !important;
+    }
+
+    .ferramentas button::after {
+      text-indent: 0;
+    }
+
+    .hud label.sel {
       display: block;
-      font-size: 0.76rem;
+      font-size: 0.66rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
       color: var(--muted);
-      margin-bottom: 6px;
+      margin: 0 0 6px;
     }
 
-    .painel select,
-    .painel .acao-loja {
+    .hud select {
       width: 100%;
-      padding: 10px 12px;
-      border-radius: 12px;
+      padding: 9px 11px;
+      border-radius: 11px;
       border: 1px solid var(--pale);
       background: var(--white);
       color: var(--text);
       font: inherit;
-      font-size: 0.85rem;
-    }
-
-    .acao-loja {
-      cursor: pointer;
-      background: var(--dark);
-      color: var(--pale);
-      border-color: var(--dark);
-      font-weight: 600;
+      font-size: 0.82rem;
     }
 
     .acao-rec {
       width: 100%;
       margin-top: 8px;
       padding: 9px;
-      border-radius: 12px;
+      border-radius: 11px;
       border: 1px solid var(--pale);
       background: transparent;
       color: var(--muted);
@@ -285,53 +536,130 @@
       border-color: var(--danger);
     }
 
-    .inspetor {
-      position: absolute;
-      z-index: 22;
-      right: 24px;
-      top: calc(var(--site-header-height) + 76px);
-      width: 236px;
-      background: color-mix(in srgb, var(--white) 93%, transparent);
-      border: 1px solid var(--pale);
-      border-radius: 18px;
-      padding: 20px;
-      backdrop-filter: blur(6px);
+    /* --- inventário do jogador (coluna direita) --- */
+    .hud-dir .cartao {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
-    .inspetor[hidden] {
+    .hud-dir .cartao h2 {
+      margin: 0 0 8px;
+    }
+
+    .hud-dir .cartao h3 {
+      margin: 12px 0 6px;
+      font-size: 0.85rem;
+    }
+
+    .lista-inventario {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .linha-inventario {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--pale);
+      border-radius: 10px;
+      padding: 8px 10px;
+      flex: 0 0 auto;
+      transition: all 0.2s ease;
+      background: var(--white);
+    }
+
+    .linha-inventario:hover {
+      border-color: var(--dark);
+      box-shadow: 0 2px 6px rgba(22, 51, 42, 0.08);
+    }
+
+    .linha-inventario .icone {
+      font-size: 1.15rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .linha-inventario .nome {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.8rem;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .linha-inventario .qtd {
+      font-family: var(--serif);
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--dark);
+      min-width: 1.5em;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .vazio-inventario {
+      font-size: 0.76rem;
+      color: var(--muted);
+      text-align: center;
+      padding: 12px 6px;
+    }
+
+    /* o inspetor é o conteúdo principal do cartão do bloco */
+    .inspetor {
+      position: static;
+      width: auto;
+      background: none;
+      border: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    /* sem bloco escolhido: some com os medidores, mantém o convite */
+    .inspetor.sem-selecao .medidor,
+    .inspetor.sem-selecao [data-ui="insp-cultivo"] {
       display: none;
     }
 
     .inspetor h3 {
       font-family: var(--serif);
-      font-weight: 500;
-      font-size: 1rem;
+      font-weight: 700;
+      font-size: 0.95rem;
       margin: 0 0 4px;
+      color: var(--dark);
     }
 
     .inspetor .coords {
       color: var(--muted);
-      font-size: 0.72rem;
-      margin: 0 0 14px;
+      font-size: 0.68rem;
+      margin: 0 0 8px;
+      opacity: 0.8;
     }
 
     .medidor {
-      margin-bottom: 12px;
+      margin-bottom: 14px;
     }
 
     .medidor .rot {
       display: flex;
       justify-content: space-between;
-      font-size: 0.74rem;
+      align-items: center;
+      font-size: 0.76rem;
       color: var(--muted);
-      margin-bottom: 4px;
+      margin-bottom: 5px;
+      font-weight: 500;
     }
 
     .medidor .barra {
-      height: 6px;
+      height: 8px;
       border-radius: 999px;
       background: var(--pale);
       overflow: hidden;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
     }
 
     .medidor .barra span {
@@ -339,6 +667,7 @@
       height: 100%;
       border-radius: 999px;
       transition: width 0.35s ease;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
     }
 
     .medidor.umidade .barra span {
@@ -532,7 +861,7 @@
       position: absolute;
       z-index: 50;
       left: 50%;
-      bottom: 28px;
+      bottom: calc(var(--hud-h) + 20px);
       transform: translateX(-50%);
       background: var(--dark);
       color: var(--pale);
@@ -561,32 +890,31 @@
     .hint {
       position: absolute;
       z-index: 10;
-      bottom: 1px;
+      bottom: calc(var(--hud-h) + 14px);
       left: 24px;
+      max-width: 260px;
       color: var(--muted);
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       background: color-mix(in srgb, var(--white) 90%, transparent);
       padding: 7px 14px;
       border-radius: 999px;
     }
 
-    /* === INVENTARIO MODO CONSTRUCAO === */
+    /* === MODO CONSTRUÇÃO: ocupa a barra central do HUD === */
     .inventario-construcao {
-      position: absolute;
-      z-index: 25;
-      right: 24px;
-      top: calc(var(--site-header-height) + 76px);
-      width: 280px;
-      max-height: calc(100vh - var(--site-header-height) - 120px);
+      flex: 1 1 auto;
+      min-height: 0;
       background: color-mix(in srgb, var(--white) 95%, transparent);
       border: 2px solid var(--dark);
       border-radius: 18px;
-      padding: 20px;
+      padding: 14px 16px;
       backdrop-filter: blur(10px);
       display: none;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
       box-shadow: 0 8px 24px rgba(22, 51, 42, 0.15);
+      touch-action: none;
+      overflow: hidden;
     }
 
     .inventario-construcao.ativo {
@@ -655,6 +983,10 @@
       cursor: grab;
       transition: all 0.2s;
       position: relative;
+      /* sem isto o navegador "rola"/rola a página no meio do arraste do dedo */
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     .item-construcao:hover {
@@ -790,6 +1122,69 @@
       font-size: 0.75rem;
       color: var(--text);
       text-align: center;
+      line-height: 1.5;
+    }
+
+    /* Controles de girar/cancelar: obrigatórios no toque */
+    .controles-construcao {
+      display: flex;
+      gap: 8px;
+    }
+
+    .controles-construcao[hidden] {
+      display: none;
+    }
+
+    .controles-construcao .ctrl {
+      flex: 1;
+      border: 1px solid var(--dark);
+      background: var(--white);
+      color: var(--dark);
+      border-radius: 10px;
+      padding: 10px 8px;
+      font: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .controles-construcao .ctrl:disabled {
+      border-color: var(--pale);
+      color: var(--muted);
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .controles-construcao .ctrl:not(:disabled):active {
+      background: var(--pale-soft);
+    }
+
+    .controles-construcao .ctrl-cancelar:not(:disabled) {
+      border-color: #ff6b35;
+      color: #ff6b35;
+    }
+
+    .controles-construcao .angulo {
+      display: inline-block;
+      min-width: 2.2em;
+      padding: 1px 6px;
+      margin-left: 4px;
+      border-radius: 999px;
+      background: var(--pale-soft);
+      font-family: var(--serif);
+    }
+
+    .status-construcao {
+      margin: 0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: var(--pale-soft);
+      border: 1px solid var(--pale);
+      color: var(--muted);
+      font-size: 0.74rem;
+      text-align: center;
+      min-height: 2.2em;
     }
 
     /* Desabilitar seleção de texto durante modo construção */
@@ -813,28 +1208,127 @@
       -webkit-user-select: text;
     }
 
-    @media (max-width: 900px) {
-      .inspetor {
+    /* Tablet: barras laterais estreitam */
+    @media (max-width: 1100px) {
+      .hud {
+        grid-template-columns: minmax(140px, 180px) minmax(240px, 1fr) minmax(170px, 210px);
+        gap: 8px;
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .info-lista {
+        gap: 5px 8px;
+      }
+
+      .info-lista li {
+        padding: 4px 8px;
+        font-size: 0.76rem;
+      }
+
+      .info-lista .rot {
+        font-size: 0.66rem;
+      }
+
+      .info-lista .val {
+        font-size: 0.88rem;
+      }
+
+      .ferramentas {
+        gap: 5px;
+      }
+
+      .ferramentas button {
+        width: 44px;
+        height: 44px;
+        max-width: 48px;
+      }
+
+      .ferramentas button svg {
+        width: 26px;
+        height: 26px;
+      }
+    }
+
+    /* Celular: duas colunas — loja e inventário no topo, clima e informações
+       no meio, renovar e ferramentas na base */
+    @media (max-width: 760px) {
+      :root {
+        --hud-h: 280px;
+      }
+
+      .hud {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        grid-template-areas:
+          "loja         dir"
+          "informacoes  informacoes"
+          "bloco        ferramentas";
+        gap: 8px;
+        padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .cartao {
+        padding: 10px 12px;
+        border-radius: 14px;
+      }
+
+      .botao-loja {
+        padding: 10px;
+        font-size: 0.78rem;
+      }
+
+      .info-lista {
+        gap: 4px 6px;
+      }
+
+      .info-lista li {
+        font-size: 0.7rem;
+        padding: 3px 6px;
+      }
+
+      .info-lista .rot {
+        font-size: 0.62rem;
+      }
+
+      .info-lista .val {
+        font-size: 0.8rem;
+      }
+
+      .ferramentas {
+        gap: 4px;
+      }
+
+      .ferramentas button {
+        width: 42px;
+        height: 42px;
+        max-width: 44px;
+      }
+
+      .ferramentas button svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      .linha-inventario {
+        padding: 6px 8px;
+      }
+
+      .linha-inventario .nome {
+        font-size: 0.75rem;
+      }
+
+      .aviso-construcao {
+        font-size: 0.72rem;
+        padding: 8px;
+      }
+
+      .item-construcao {
+        padding: 10px;
+      }
+
+      .hint {
         display: none;
-      }
-
-      .painel {
-        width: 200px;
-        left: 14px;
-        padding: 14px;
-      }
-
-      .topbar {
-        max-width: 96vw;
-      }
-
-      .topbar .stat {
-        min-width: 70px;
-        padding: 6px 10px;
-      }
-
-      .topbar .v {
-        font-size: 0.92rem;
       }
     }
 
@@ -873,71 +1367,113 @@
     </span>
   </div>
 
-  <div class="topbar" aria-label="Recursos">
-    <div class="stat">
-      <span class="k">Dinheiro</span><span class="v" data-ui="dinheiro">$0</span>
+  <!-- ================== HUD INFERIOR ==================
+       Esquerda: loja / clima-nivel-xp / renovar fazenda
+       Centro:   informacoes (barra larga) + ferramentas (vira o inventario
+                 do modo construcao)
+       Direita:  inventario do jogador
+  ===================================================== -->
+  <div class="hud">
+    <!-- COLUNA ESQUERDA, LINHA 1: loja -->
+    <div class="hud-loja">
+      <button class="botao-loja" type="button" data-ui="abrir-loja">
+        Loja e melhorias
+      </button>
     </div>
-    <div class="stat">
-      <span class="k">Energia</span><span class="v" data-ui="energia">0/0</span>
+
+    <div class="hud-bloco">
+      <div class="cartao">
+        <aside class="inspetor sem-selecao" data-ui="inspetor" aria-live="polite">
+          <h3 data-ui="insp-titulo">Terreno</h3>
+          <p class="coords" data-ui="insp-coords">clique num bloco para ver</p>
+          <span class="selo" data-ui="insp-selo">-</span>
+          <div class="medidor umidade">
+            <div class="rot">
+              <span>Água</span><span data-ui="insp-umidade">0%</span>
+            </div>
+            <div class="barra"><span data-ui="bar-umidade"></span></div>
+          </div>
+          <div class="medidor fertilidade">
+            <div class="rot">
+              <span>Fertilidade</span><span data-ui="insp-fert">0%</span>
+            </div>
+            <div class="barra"><span data-ui="bar-fert"></span></div>
+          </div>
+          <div class="medidor poluicao">
+            <div class="rot">
+              <span>Poluição</span><span data-ui="insp-pol">0%</span>
+            </div>
+            <div class="barra"><span data-ui="bar-pol"></span></div>
+          </div>
+          <p class="coords" data-ui="insp-cultivo" style="margin: 10px 0 0">-</p>
+        </aside>
+      </div>
     </div>
-    <div class="stat">
-      <span class="k">Agua</span><span class="v" data-ui="agua">0</span>
+
+    <!-- COLUNA ESQUERDA, LINHA 3: renovar fazenda -->
+    <div class="hud-renovar">
+      <button class="acao-rec" type="button" data-ui="reiniciar">
+        Renovar fazenda
+      </button>
     </div>
-    <div class="stat">
-      <span class="k">Nivel</span><span class="v" data-ui="nivel">1</span>
+
+    <!-- CENTRO, LINHA 1: informacoes da fazenda (lista vertical) -->
+    <div class="hud-informacoes">
+      <div class="cartao">
+        <ul class="info-lista" aria-label="Informações da fazenda">
+          <li><span class="rot icone-info" data-icone="dinheiro"></span><span class="val" data-ui="dinheiro">$0</span></li>
+          <li><span class="rot icone-info" data-icone="energia"></span><span class="val" data-ui="energia">0/0</span></li>
+          <li><span class="rot icone-info" data-icone="agua"></span><span class="val" data-ui="agua">0</span></li>
+          <li><span class="rot icone-info" data-ui="icone-tempo"></span><span class="val" data-ui="tempo">-</span></li>
+          <li><span class="rot icone-info" data-icone="nivel"></span><span class="val" data-ui="nivel">1</span></li>
+          <li><span class="rot icone-info" data-icone="xp"></span><span class="val" data-ui="xp">0</span></li>
+          <li><span class="rot icone-info" data-icone="pegada"></span><span class="val" data-ui="pegada">0</span></li>
+          <li><span class="rot icone-info" data-ui="icone-clima"></span><span class="val" data-ui="clima">-</span></li>
+        </ul>
+      </div>
     </div>
-    <div class="stat">
-      <span class="k">XP</span><span class="v" data-ui="xp">0</span>
+
+    <!-- CENTRO: ferramentas; no modo construção vira o inventário dele -->
+    <div class="hud-centro">
+      <div class="cabecalho-centro">
+        <span class="titulo" data-ui="titulo-centro">Ferramentas</span>
+        <button class="fechar-construcao" data-ui="fechar-construcao" title="Sair do modo construção" hidden>×</button>
+      </div>
+
+      <div class="cartao barra-ferramentas" data-ui="barra-ferramentas">
+        <div class="ferramentas" data-ui="ferramentas"></div>
+      </div>
+
+      <aside class="inventario-construcao" data-ui="inventario-construcao">
+        <div class="aviso-construcao">
+          Arraste um item até o terreno e solte. <strong>R</strong> gira em 90°,
+          <strong>Esc</strong> ou o botão direito cancela. No celular, use os botões abaixo.
+          <br>
+          Cada equipamento comprado pode ter <strong>uma</strong> cópia no terreno — e continua
+          contando na fazenda.
+        </div>
+        <div class="controles-construcao" data-ui="controles-construcao" hidden>
+          <button type="button" class="ctrl" data-ui="girar-construcao">
+            Girar <span class="angulo" data-ui="angulo-construcao">0°</span>
+          </button>
+          <button type="button" class="ctrl ctrl-cancelar" data-ui="cancelar-construcao">Cancelar</button>
+        </div>
+        <p class="status-construcao" data-ui="status-construcao" aria-live="polite"></p>
+        <div class="inventario-scroll" data-ui="itens-inventario"></div>
+      </aside>
     </div>
-    <div class="stat">
-      <span class="k">Pegada</span><span class="v" data-ui="pegada">0</span>
-    </div>
-    <div class="stat">
-      <span class="k">Tempo</span><span class="v" data-ui="tempo">-</span>
-    </div>
-    <div class="stat">
-      <span class="k">Clima</span><span class="v" data-ui="clima">-</span>
+
+    <!-- DIREITA: o que o jogador carrega -->
+    <div class="hud-dir">
+      <div class="cartao">
+        <h2>Inventário do jogador</h2>
+        <label class="sel" for="sel-semente">Semente na mao</label>
+        <select id="sel-semente" data-ui="semente"></select>
+        <h3>Equipamentos</h3>
+        <div class="lista-inventario" data-ui="inventario-jogador"></div>
+      </div>
     </div>
   </div>
-
-  <aside class="painel">
-    <h2>Ferramentas</h2>
-    <div class="ferramentas" data-ui="ferramentas"></div>
-    <label class="sel" for="sel-semente">Semente na mao</label>
-    <select id="sel-semente" data-ui="semente"></select>
-    <div style="height: 12px"></div>
-    <button class="acao-loja" type="button" data-ui="abrir-loja">
-      Loja e melhorias
-    </button>
-    <button class="acao-rec" type="button" data-ui="reiniciar">
-      Recomecar a fazenda
-    </button>
-  </aside>
-
-  <aside class="inspetor" data-ui="inspetor" hidden aria-live="polite">
-    <h3 data-ui="insp-titulo">Bloco</h3>
-    <p class="coords" data-ui="insp-coords">-</p>
-    <span class="selo" data-ui="insp-selo">-</span>
-    <div class="medidor umidade">
-      <div class="rot">
-        <span>Umidade</span><span data-ui="insp-umidade">0%</span>
-      </div>
-      <div class="barra"><span data-ui="bar-umidade"></span></div>
-    </div>
-    <div class="medidor fertilidade">
-      <div class="rot">
-        <span>Fertilidade</span><span data-ui="insp-fert">0%</span>
-      </div>
-      <div class="barra"><span data-ui="bar-fert"></span></div>
-    </div>
-    <div class="medidor poluicao">
-      <div class="rot">
-        <span>Poluicao</span><span data-ui="insp-pol">0%</span>
-      </div>
-      <div class="barra"><span data-ui="bar-pol"></span></div>
-    </div>
-    <p class="coords" data-ui="insp-cultivo" style="margin: 10px 0 0">-</p>
-  </aside>
 
   <div class="modal" data-ui="loja" hidden>
     <div class="modal-card">
@@ -952,22 +1488,6 @@
   </div>
 
   <p class="toast" data-ui="toast" role="status" aria-live="polite"></p>
-  <p class="hint">
-    <strong>WASD</strong> mover &middot; <strong>ESPAÇO</strong> pular &middot; arraste para girar &middot; role para aproximar &middot; 
-    clique num bloco para usar a ferramenta &middot; <strong>H</strong> liga a camera livre
-  </p>
-
-  <!-- INVENTARIO MODO CONSTRUCAO -->
-  <aside class="inventario-construcao" data-ui="inventario-construcao">
-    <h3>
-      🏗️ Modo Construção
-      <button class="fechar-construcao" data-ui="fechar-construcao" title="Sair do modo construção">×</button>
-    </h3>
-    <div class="aviso-construcao">
-      Clique em um item e depois no mapa para posicionar. Use o mouse para mover a câmera.
-    </div>
-    <div class="inventario-scroll" data-ui="itens-inventario"></div>
-  </aside>
 
   <script src="../js/firebase-config.js"></script>
   <script src="../js/header.js"></script>

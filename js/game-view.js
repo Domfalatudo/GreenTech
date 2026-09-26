@@ -66,183 +66,244 @@
   
   var teclasPressionadas = {};
   var obstaculos = []; // Lista de objetos com colisão
-  
-  // === MODO CONSTRUCAO ===
+
+  // =====================================================================
+  // ESTADO DO MODO CONSTRUÇÃO
+  // ---------------------------------------------------------------------
+  // Este objeto é declarado UMA ÚNICA VEZ e é a única fonte de verdade do
+  // modo. Antes existia uma segunda declaração `var modoConstrucao = {...}`
+  // mais abaixo no arquivo: por ser `var`, ela rodava no carregamento e
+  // SOBRESCREVIA esta, apagando `itemsPosicionados` (e fazia o `.push` na
+  // hora de colocar um item estourar) junto com inventario, arrastando,
+  // modoDeletar e grade. Não declare `modoConstrucao` em mais nenhum lugar.
+  //
+  //  ativo            modo ligado?
+  //  itemSelecionado   id do item preparado para posicionar
+  //  preview           Group translúcido que segue o ponteiro
+  //  previewValido     o bloco sob o preview aceita a construção
+  //  previewMotivo     por que não aceita (vira o aviso da UI)
+  //  grade             grupo com as linhas e os planos verdes dos lotes
+  //  construcoes       meshes 3D permanentes no mapa
+  //  particulas        gotas/vapor com vida curta
+  //  arrastando        arraste em curso
+  //  ponteiroId        pointerId dono do arraste (mouse OU toque)
+  //  origem            ponto do pointerdown, para separar clique de arrasto
+  //  rotacao           giro do preview em passos de 90 graus (0..3)
+  //  modoDeletar       marreta armada
+  //  emDestaque        construção sob o dedo/cursor na marreta
+  //  ferramentaAnterior  ferramenta antes de entrar (restaurada ao sair)
+  //  livreAntes        a câmera livre já estava ligada antes de entrar
+  // =====================================================================
   var modoConstrucao = {
     ativo: false,
     itemSelecionado: null,
     preview: null,
-    itemsPosicionados: [], // Items colocados no mapa
-    animacoes: [], // Animações ativas
-    inventario: {}, // Itens disponíveis {itemId: quantidade}
-    arrastando: false, // Flag para controlar drag & drop
-    mouseDownPos: null, // Posição inicial do mouse
-    modoDeletar: false // Flag para modo deletar
+    previewValido: false,
+    previewMotivo: '',
+    grade: null,
+    construcoes: [],
+    particulas: [],
+    arrastando: false,
+    ponteiroId: null,
+    origem: null,
+    rotacao: 0,
+    modoDeletar: false,
+    emDestaque: null,
+    ferramentaAnterior: null,
+    livreAntes: false
   };
-  
-  // Função para ativar modo construção
-  function ativarModoConstrucao() {
-    modoConstrucao.ativo = true;
-    
-    // Adicionar classe no body para desabilitar seleção
-    document.body.classList.add('modo-construcao');
-    
-    // Esconder personagem
-    if (malhaFazendeiro) {
-      malhaFazendeiro.visible = false;
-    }
-    
-    // Esconder seleção de bloco
-    if (malhaSelecao) {
-      malhaSelecao.visible = false;
-    }
-    
-    // Mostrar grade de construção
-    if (!modoConstrucao.grade) {
-      criarGradeConstrucao();
-    }
-    modoConstrucao.grade.visible = true;
-    
-    // Mostrar inventário
-    var inv = ui('inventario-construcao');
-    if (inv) {
-      inv.classList.add('ativo');
-      atualizarInventarioConstrucao();
-    }
-    
-    // Esconder painel de ferramentas
-    var painel = document.querySelector('.painel');
-    if (painel) painel.style.display = 'none';
-    
-    // Esconder inspetor
-    var inspetor = ui('inspetor');
-    if (inspetor) inspetor.hidden = true;
-    
-    aviso('Modo Construção ativado! Pressione H para câmera livre', false);
+
+  var ANGULO_GIRO = Math.PI / 2;
+  var COR_PREVIEW_OK = 0x2fbf5f;
+  var COR_PREVIEW_NOK = 0xe0483a;
+
+  function discardarObjeto(objeto) {
+    if (!objeto) return;
+    if (objeto.parent) objeto.parent.remove(objeto);
+    objeto.traverse(function (no) {
+      if (no.geometry) no.geometry.dispose();
+      if (!no.material) return;
+      var lista = Array.isArray(no.material) ? no.material : [no.material];
+      lista.forEach(function (m) { m.dispose(); });
+    });
   }
-  
-  // Função para desativar modo construção
+
+  // A barra central do HUD tem DOIS estados: as ferramentas e o inventário
+  // do modo construção. Entra um, sai o outro, e o título acompanha.
+  function atualizarCabecalhoCentro() {
+    var titulo = ui('titulo-centro');
+    var barra = ui('barra-ferramentas');
+    var fechar = ui('fechar-construcao');
+    if (titulo) {
+      titulo.textContent = modoConstrucao.ativo
+        ? 'Inventário do modo construção'
+        : 'Ferramentas';
+    }
+    if (barra) barra.hidden = modoConstrucao.ativo;
+    if (fechar) fechar.hidden = !modoConstrucao.ativo;
+  }
+
+  // Ativar o modo construção
+  function ativarModoConstrucao() {
+    if (modoConstrucao.ativo || !estado) return;
+
+    // guarda o que precisa voltar exatamente como estava
+    modoConstrucao.ferramentaAnterior = estado.ferramenta || 'plantar';
+    modoConstrucao.livreAntes = livre.ligado;
+
+    modoConstrucao.ativo = true;
+    modoConstrucao.rotacao = 0;
+    // a ferramenta vira "construcao" de verdade: é o que faz o botão receber
+    // a classe .ativo e o que impede usar ferramenta no mapa com o modo ligado
+    estado.ferramenta = 'construcao';
+    marcarFerramenta();
+    atualizarFerramentaMao();
+
+    document.body.classList.add('modo-construcao');
+    if (malhaFazendeiro) malhaFazendeiro.visible = false;
+    if (malhaSelecao) malhaSelecao.visible = false;
+    selecionado = null;
+
+    // a grade é refeita na ativação: se o jogador comprou lote depois da
+    // última vez, ela precisa refletir o terreno novo
+    reconstruirGradeConstrucao(true);
+    if (modoConstrucao.grade) modoConstrucao.grade.visible = true;
+
+    var inv = ui('inventario-construcao');
+    if (inv) inv.classList.add('ativo');
+    atualizarCabecalhoCentro();
+    atualizarInventarioConstrucao();
+    atualizarControlesConstrucao();
+    pintarInspetor();
+
+    aviso('Modo Construção ligado. Arraste um item até o terreno e solte.', false);
+  }
+
+  // Desativar o modo construção devolvendo o jogo ao estado anterior
   function desativarModoConstrucao() {
+    if (!modoConstrucao.ativo) return;
+
+    cancelarArrasteItem(true);
+    if (modoConstrucao.modoDeletar) desativarModoDeletar(true);
+
     modoConstrucao.ativo = false;
     modoConstrucao.itemSelecionado = null;
-    
-    // Desativar modo deletar se estiver ativo
-    if (modoConstrucao.modoDeletar) {
-      desativarModoDeletar();
-    }
-    
-    // Remover classe do body
+    modoConstrucao.rotacao = 0;
     document.body.classList.remove('modo-construcao');
-    
-    // Remover preview se existir
-    if (modoConstrucao.preview) {
-      grupoEstruturas.remove(modoConstrucao.preview);
-      modoConstrucao.preview = null;
-    }
-    
-    // Esconder grade
-    if (modoConstrucao.grade) {
-      modoConstrucao.grade.visible = false;
-    }
-    
-    // Mostrar personagem
-    if (malhaFazendeiro) {
-      malhaFazendeiro.visible = true;
-    }
-    
-    // Esconder inventário
+    if (malhaFazendeiro) malhaFazendeiro.visible = true;
+    if (modoConstrucao.grade) modoConstrucao.grade.visible = false;
+
     var inv = ui('inventario-construcao');
     if (inv) inv.classList.remove('ativo');
-    
-    // Mostrar painel de ferramentas
-    var painel = document.querySelector('.painel');
-    if (painel) painel.style.display = '';
-    
-    // Voltar ferramenta para plantar
+    atualizarCabecalhoCentro();
+    atualizarControlesConstrucao();
+
+    // devolve a ferramenta que estava na mão antes de entrar
     if (estado) {
-      estado.ferramenta = 'plantar';
+      estado.ferramenta = modoConstrucao.ferramentaAnterior || 'plantar';
       marcarFerramenta();
       atualizarFerramentaMao();
+      C.salvar(estado);
     }
-    
-    aviso('Modo Construção desativado', false);
+    modoConstrucao.ferramentaAnterior = null;
+
+    // a câmera livre só é desligada se foi o modo construção que ligou ela
+    if (!modoConstrucao.livreAntes && livre.ligado) desligarLivre();
+    modoConstrucao.livreAntes = false;
+
+    pintarInspetor();
+    aviso('Modo Construção desligado.', false);
   }
   
+  // Recria a grade de construcao. Ela e montada a partir de `estado.lotes`,
+  // entao precisa ser refeita sempre que um lote novo for comprado e toda vez
+  // que o modo construcao for ativado.
+  function reconstruirGradeConstrucao(forcar) {
+    if (!estado || !tabuleiro) return;
+    if (!forcar && modoConstrucao.grade && modoConstrucao.grade.userData.lotes === Object.keys(estado.lotes).length) {
+      return;
+    }
+    if (modoConstrucao.grade) discardarObjeto(modoConstrucao.grade);
+    modoConstrucao.grade = null;
+    criarGradeConstrucao();
+  }
+
   // Criar grade de construção
   function criarGradeConstrucao() {
     var gradeGroup = new THREE.Group();
-    
+    gradeGroup.userData.lotes = Object.keys(estado.lotes).length;
+
     // Material das linhas da grade (branco)
-    var materialLinha = new THREE.LineBasicMaterial({ 
-      color: 0xffffff, 
-      transparent: true, 
+    var materialLinha = new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
       opacity: 0.7,
       depthWrite: false
     });
-    
+
     // Material das linhas dos lotes (azul mais forte)
-    var materialLote = new THREE.LineBasicMaterial({ 
-      color: 0x4af0ff, 
-      transparent: true, 
+    var materialLote = new THREE.LineBasicMaterial({
+      color: 0x4af0ff,
+      transparent: true,
       opacity: 0.9,
       depthWrite: false
     });
-    
+
     // Altura da grade (acima dos blocos)
     var alturaGrade = 0.2;
-    
+
     // Calcular limites da grade baseado no sistema de coordenadas
     // A grade deve ter linhas nas BORDAS dos blocos, não nos centros
     var limiteMin = -meio - TILE/2;
     var limiteMax = meio + TILE/2;
-    
+
     // Criar linhas verticais (bordas dos blocos no eixo X)
     for (var x = 0; x <= D.GRADE; x++) {
       // Posição da linha: início da grade + x blocos
       var xReal = limiteMin + x * STEP;
       var ehLinhaDeLote = (x % D.LOTE === 0);
       var material = ehLinhaDeLote ? materialLote : materialLinha;
-      
+
       var pontos = [];
       pontos.push(new THREE.Vector3(xReal, alturaGrade, limiteMin));
       pontos.push(new THREE.Vector3(xReal, alturaGrade, limiteMax));
-      
+
       var geometria = new THREE.BufferGeometry().setFromPoints(pontos);
       var linha = new THREE.Line(geometria, material);
       gradeGroup.add(linha);
     }
-    
+
     // Criar linhas horizontais (bordas dos blocos no eixo Z)
     for (var z = 0; z <= D.GRADE; z++) {
       var zReal = limiteMin + z * STEP;
       var ehLinhaDeLote = (z % D.LOTE === 0);
       var material = ehLinhaDeLote ? materialLote : materialLinha;
-      
+
       var pontos = [];
       pontos.push(new THREE.Vector3(limiteMin, alturaGrade, zReal));
       pontos.push(new THREE.Vector3(limiteMax, alturaGrade, zReal));
-      
+
       var geometria = new THREE.BufferGeometry().setFromPoints(pontos);
       var linha = new THREE.Line(geometria, material);
       gradeGroup.add(linha);
     }
-    
+
     // Adicionar plano verde APENAS em blocos liberados
     estado.blocos.forEach(function(b) {
       var p = posicaoDe(b);
-      
+
       // Verificar se o bloco está em lote comprado
       var loteX = Math.floor(b.x / D.LOTE);
       var loteZ = Math.floor(b.z / D.LOTE);
       var chaveLote = loteX + ':' + loteZ;
-      
+
       if (estado.lotes[chaveLote] && !b.bloqueado) {
         // Plano verde semi-transparente
         var plano = new THREE.Mesh(
           new THREE.PlaneGeometry(TILE, TILE),
-          new THREE.MeshBasicMaterial({ 
-            color: 0x6fbf7a, 
-            transparent: true, 
+          new THREE.MeshBasicMaterial({
+            color: 0x6fbf7a,
+            transparent: true,
             opacity: 0.25,
             side: THREE.DoubleSide,
             depthWrite: false
@@ -253,401 +314,532 @@
         gradeGroup.add(plano);
       }
     });
-    
+
     tabuleiro.add(gradeGroup);
     modoConstrucao.grade = gradeGroup;
-    gradeGroup.visible = false;
+    gradeGroup.visible = !!modoConstrucao.ativo;
   }
-  
+
   // Função para snap to grid (encaixar na grade)
   function snapToGrid(x, z) {
     // O sistema de coordenadas do jogo:
     // - Centro é 0,0
     // - Blocos vão de -meio a +meio
     // - Cada bloco tem tamanho STEP
-    
+
     // Converter coordenada mundial para índice de bloco
     var blocoX = Math.round((x + meio) / STEP);
     var blocoZ = Math.round((z + meio) / STEP);
-    
+
     // Limitar aos limites da grade
     blocoX = Math.max(0, Math.min(D.GRADE - 1, blocoX));
     blocoZ = Math.max(0, Math.min(D.GRADE - 1, blocoZ));
-    
+
     // Converter de volta para coordenada mundial (centro do bloco)
     var gridX = blocoX * STEP - meio;
     var gridZ = blocoZ * STEP - meio;
-    
-    console.log('snapToGrid: mundo(', x.toFixed(2), z.toFixed(2), ') -> bloco[', blocoX, blocoZ, '] -> mundo(', gridX.toFixed(2), gridZ.toFixed(2), ')'); // DEBUG
-    
+
     return { x: gridX, z: gridZ, blocoX: blocoX, blocoZ: blocoZ };
   }
+
+  // o ponteiro está dentro do tabuleiro?
+  function dentroDoTabuleiro(x, z) {
+    var limite = meio + TILE / 2;
+    return x >= -limite && x <= limite && z >= -limite && z <= limite;
+  }
   
-  // Função para atualizar inventário
+  // ==========================================================
+  // INVENTÁRIO DO MODO CONSTRUÇÃO
+  // ==========================================================
+  // Quantidade exibida = unidade que AINDA não foi exposta no mapa.
+  // O item continua sendo seu depois de colocado (modelo (a)): ele
+  // permanece em `estado.itens` e continua valendo energia, pegada
+  // ecológica e uso de ferramenta. O que muda é que cada unidade só
+  // pode ter UMA cópia construída, o que mantém o inventário honesto
+  // (nada duplica, nada some ao recarregar a página).
   function atualizarInventarioConstrucao() {
     var container = ui('itens-inventario');
     if (!container || !estado) return;
-    
-    container.innerHTML = '';
-    
-    console.log('Estado itens:', estado.itens); // DEBUG
-    
-    // BOTÃO DE MARRETA (sempre no topo)
+
+    container.textContent = '';
+
+    // MARRETA (sempre no topo)
+    var marretadas = (estado.construcoes || []).length;
     var divMarreta = document.createElement('div');
     divMarreta.className = 'item-construcao item-marreta';
     divMarreta.dataset.itemId = 'marreta';
+    divMarreta.setAttribute('role', 'button');
     if (modoConstrucao.modoDeletar) divMarreta.classList.add('selecionado');
-    
-    divMarreta.innerHTML = 
+
+    divMarreta.innerHTML =
       '<div class="icon" style="font-size: 1.8rem;">🔨</div>' +
       '<div class="info">' +
         '<div class="nome">Marreta</div>' +
-        '<div class="quantidade">Deletar itens</div>' +
+        '<div class="quantidade">' +
+          (marretadas ? 'Remover construções (' + marretadas + ')' : 'Nada construído ainda') +
+        '</div>' +
       '</div>';
-    
-    divMarreta.addEventListener('click', function() {
-      ativarModoDeletar();
+
+    divMarreta.addEventListener('click', function () {
+      if (modoConstrucao.modoDeletar) desativarModoDeletar();
+      else ativarModoDeletar();
     });
-    
+
     container.appendChild(divMarreta);
-    
+
     // Separador visual
     var separador = document.createElement('div');
     separador.style.cssText = 'height: 1px; background: var(--pale); margin: 8px 0;';
     container.appendChild(separador);
-    
-    // Mapear itens da loja para o inventário (sem enxada e regador que são básicos)
-    var itensDisponiveis = [
-      { id: 'trator', nome: 'Trator Antigo', emoji: '🚜' },
-      { id: 'tratorEletrico', nome: 'Trator Elétrico', emoji: '⚡' },
-      { id: 'drone', nome: 'Drone', emoji: '🚁' },
-      { id: 'colheitadeira', nome: 'Colheitadeira', emoji: '🌾' },
-      { id: 'gotejamento', nome: 'Irrigação', emoji: '💧' },
-      { id: 'composteira', nome: 'Composteira', emoji: '♻️' },
-      { id: 'arvore', nome: 'Reflorestamento', emoji: '🌳' }
-    ];
-    
-    itensDisponiveis.forEach(function(item) {
-      var quantidade = estado.itens[item.id] || 0;
-      
-      console.log('Item:', item.id, 'Quantidade:', quantidade); // DEBUG
-      
+
+    Object.keys(D.CONSTRUCOES.itens).forEach(function (itemId) {
+      var modelo = D.CONSTRUCOES.itens[itemId];
+      var disponivel = C.construcoesDoItem(estado, itemId);
+      var noMapa = C.contarConstrucoes(estado, itemId);
+
       var div = document.createElement('div');
       div.className = 'item-construcao';
-      div.dataset.itemId = item.id;
-      if (quantidade === 0) div.classList.add('sem-item');
-      
-      div.innerHTML = 
-        '<div class="icon">' + item.emoji + '</div>' +
+      div.dataset.itemId = itemId;
+      div.setAttribute('role', 'button');
+      if (disponivel === 0) div.classList.add('sem-item');
+
+      div.innerHTML =
+        '<div class="icon">' + modelo.emoji + '</div>' +
         '<div class="info">' +
-          '<div class="nome">' + item.nome + '</div>' +
-          '<div class="quantidade">' + 
-            (quantidade > 0 ? 'Disponível: ' + quantidade : 'Nenhum disponível') +
+          '<div class="nome">' + modelo.nome + '</div>' +
+          '<div class="quantidade">' +
+            (disponivel > 0
+              ? 'Disponível: ' + disponivel + (noMapa ? ' · no mapa: ' + noMapa : '')
+              : 'Todas as unidades já estão no mapa') +
           '</div>' +
         '</div>' +
-        (quantidade > 0 ? '<div class="badge">' + quantidade + '</div>' : '');
-      
-      if (quantidade > 0) {
-        // Usar mousedown/mouseup para drag & drop
-        div.addEventListener('mousedown', function(e) {
-          e.preventDefault();
-          iniciarArrastarItem(item.id, e);
+        (disponivel > 0 ? '<div class="badge">' + disponivel + '</div>' : '');
+
+      if (disponivel > 0) {
+        // Pointer Events: o mesmo caminho serve para mouse e para toque.
+        // Um toque/clique simples só SELECIONA o item; o ponteiro seguinte
+        // sobre o mapa é quem posiciona. Arrastar também funciona.
+        div.addEventListener('pointerdown', function (ev) {
+          ev.preventDefault();
+          iniciarArrastarItem(itemId, ev);
         });
       }
-      
+
       container.appendChild(div);
     });
   }
   
-  // Ativar modo deletar
+  // ==========================================================
+  // MODO DELETAR (marreta)
+  // ==========================================================
   function ativarModoDeletar() {
-    // Se já estava no modo deletar, desativar
-    if (modoConstrucao.modoDeletar) {
-      desativarModoDeletar();
-      return;
-    }
-    
-    console.log('Ativando modo deletar'); // DEBUG
-    
-    // Cancelar arraste se estiver arrastando
-    if (modoConstrucao.arrastando) {
-      cancelarArrasteItem();
-    }
-    
+    cancelarArrasteItem(true);
     modoConstrucao.modoDeletar = true;
     modoConstrucao.itemSelecionado = 'marreta';
-    
-    // Adicionar classe no body para mudar cursor
     document.body.classList.add('modo-deletar');
-    
-    // Atualizar visual do inventário
-    destacarItemSelecionado('marreta');
-    
-    aviso('Modo deletar ativado! Clique nos itens para remover', false);
+    atualizarInventarioConstrucao();
+    atualizarControlesConstrucao();
+    aviso('Marreta armada. Toque numa construção para retirar do terreno.', false);
   }
-  
-  // Desativar modo deletar
-  function desativarModoDeletar() {
-    console.log('Desativando modo deletar'); // DEBUG
-    
+
+  function desativarModoDeletar(silencioso) {
     modoConstrucao.modoDeletar = false;
-    modoConstrucao.itemSelecionado = null;
-    
-    // Remover classe do body
+    if (modoConstrucao.itemSelecionado === 'marreta') modoConstrucao.itemSelecionado = null;
+    soltarDestaqueRemocao();
     document.body.classList.remove('modo-deletar');
-    
-    // Remover destaque
-    var itens = document.querySelectorAll('.item-construcao');
-    itens.forEach(function(el) { 
-      el.classList.remove('selecionado');
-    });
-    
-    aviso('Modo deletar desativado', false);
-  }
-  
-  // Deletar item clicado
-  function deletarItemConstrucao(item) {
-    if (!item || !item.userData || !item.userData.permanente) return false;
-    
-    var itemId = item.userData.itemId;
-    
-    console.log('Deletando item:', itemId); // DEBUG
-    
-    // Remover da cena
-    grupoEstruturas.remove(item);
-    
-    // Remover da lista de itens posicionados
-    var idx = modoConstrucao.itemsPosicionados.indexOf(item);
-    if (idx >= 0) {
-      modoConstrucao.itemsPosicionados.splice(idx, 1);
-    }
-    
-    // Devolver ao inventário
-    estado.itens[itemId] = (estado.itens[itemId] || 0) + 1;
-    
-    // Atualizar UI
     atualizarInventarioConstrucao();
-    atualizarUI();
-    C.salvar(estado);
-    
-    aviso('Item removido e devolvido ao inventário', false);
-    
-    return true;
+    if (!silencioso) aviso('Marreta guardada.', false);
   }
-  
-  // Iniciar arraste do item
-  function iniciarArrastarItem(itemId, evento) {
-    if (!modoConstrucao.ativo) {
-      console.log('Modo construção não está ativo'); // DEBUG
-      return;
-    }
-    
-    // Se estiver no modo deletar, desativar antes de arrastar
-    if (modoConstrucao.modoDeletar) {
-      desativarModoDeletar();
-    }
-    
-    var quantidade = estado.itens[itemId] || 0;
-    if (quantidade === 0) {
-      aviso('Você não possui este item', true);
-      return;
-    }
-    
-    console.log('===== INICIANDO ARRASTE ====='); // DEBUG
-    console.log('Item:', itemId, 'Quantidade:', quantidade); // DEBUG
-    
-    modoConstrucao.itemSelecionado = itemId;
-    modoConstrucao.arrastando = true;
-    modoConstrucao.mouseDownPos = { x: evento.clientX, y: evento.clientY };
-    
-    console.log('modoConstrucao.arrastando =', modoConstrucao.arrastando); // DEBUG
-    
-    // Adicionar classe no body para mudar cursor
-    document.body.classList.add('arrastando-item');
-    
-    // Remover preview anterior se existir
-    if (modoConstrucao.preview) {
-      console.log('Removendo preview anterior'); // DEBUG
-      grupoEstruturas.remove(modoConstrucao.preview);
-      modoConstrucao.preview = null;
-    }
-    
-    // Criar preview imediatamente
-    try {
-      console.log('Chamando criarPreviewItem...'); // DEBUG
-      modoConstrucao.preview = criarPreviewItem(itemId);
-      
-      if (!modoConstrucao.preview) {
-        throw new Error('criarPreviewItem retornou null para ' + itemId);
-      }
-      
-      console.log('Preview criado com sucesso!'); // DEBUG
-      console.log('Preview object:', modoConstrucao.preview); // DEBUG
-      
-      modoConstrucao.preview.position.set(0, 0, 0);
-      modoConstrucao.preview.visible = true; // COMEÇAR VISÍVEL para debug
-      grupoEstruturas.add(modoConstrucao.preview);
-      
-      console.log('Preview adicionado ao grupoEstruturas'); // DEBUG
-      console.log('grupoEstruturas.children.length:', grupoEstruturas.children.length); // DEBUG
-      
-      // Destacar item selecionado e adicionar classe de arrastando
-      destacarItemSelecionado(itemId);
-      var itemEl = document.querySelector('.item-construcao[data-item-id="' + itemId + '"]');
-      if (itemEl) {
-        itemEl.classList.add('arrastando');
-        console.log('Classe arrastando adicionada ao elemento'); // DEBUG
-      }
-      
-      aviso('Arraste o item e solte no terreno verde', false);
-      
-      console.log('===== ARRASTE INICIADO COM SUCESSO ====='); // DEBUG
-    } catch (erro) {
-      console.error('ERRO ao criar preview:', erro);
-      console.error('Stack:', erro.stack);
-      aviso('Erro ao criar preview: ' + erro.message, true);
-      modoConstrucao.itemSelecionado = null;
-      modoConstrucao.arrastando = false;
-      document.body.classList.remove('arrastando-item');
-      return;
-    }
+
+  // Realça a construção que está sob o cursor/dedo, para o jogador ver
+  // exatamente o que vai sair do terreno antes de confirmar.
+  function realcarParaRemocao(item) {
+    if (item.userData.realcado) return;
+    item.traverse(function (no) {
+      if (!no.isMesh || !no.material) return;
+      if (!no.userData.materialOriginal) no.userData.materialOriginal = no.material;
+      var mat = no.userData.materialOriginal.clone();
+      mat.transparent = true;
+      mat.opacity = 0.9;
+      if (mat.emissive) mat.emissive.setHex(0xff2d1a);
+      if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.9;
+      no.material = mat;
+    });
+    item.userData.realcado = true;
   }
-  
-  // Finalizar arraste (soltar item)
-  function finalizarArrastarItem() {
-    if (!modoConstrucao.arrastando || !modoConstrucao.preview) {
-      modoConstrucao.arrastando = false;
-      document.body.classList.remove('arrastando-item');
-      return;
-    }
-    
-    console.log('Finalizando arraste'); // DEBUG
-    
-    var itemId = modoConstrucao.itemSelecionado;
-    
-    // Verificar se tem item disponível
-    if (!estado.itens[itemId] || estado.itens[itemId] <= 0) {
-      aviso('Você não tem este item!', true);
-      cancelarArrasteItem();
-      return;
-    }
-    
-    // Pegar posição do preview
-    var pos = modoConstrucao.preview.position.clone();
-    
-    // Verificar se está visível (ou seja, estava sobre o mapa)
-    if (!modoConstrucao.preview.visible) {
-      aviso('Posicione o item sobre o terreno', true);
-      cancelarArrasteItem();
-      return;
-    }
-    
-    // Converter posição do mundo para índices de bloco
-    var snapped = snapToGrid(pos.x, pos.z);
-    var blocoNaPosicao = C.blocoEm(estado, snapped.blocoX, snapped.blocoZ);
-    
-    console.log('Tentando colocar item no bloco:', snapped.blocoX, snapped.blocoZ, blocoNaPosicao); // DEBUG
-    
-    if (!blocoNaPosicao) {
-      aviso('Posição inválida!', true);
-      cancelarArrasteItem();
-      return;
-    }
-    
-    // Verificar se o bloco está em um lote comprado
-    var loteX = Math.floor(blocoNaPosicao.x / D.LOTE);
-    var loteZ = Math.floor(blocoNaPosicao.z / D.LOTE);
-    var chaveLote = loteX + ':' + loteZ;
-    
-    if (!estado.lotes[chaveLote]) {
-      aviso('Você só pode colocar itens em lotes comprados! Compre na loja > Terreno', true);
-      cancelarArrasteItem();
-      return;
-    }
-    
-    if (blocoNaPosicao.bloqueado) {
-      aviso('Este bloco está bloqueado (mata nativa)!', true);
-      cancelarArrasteItem();
-      return;
-    }
-    
-    // Criar item real na posição correta
+
+  function soltarDestaqueRemocao() {
+    var item = modoConstrucao.emDestaque;
+    modoConstrucao.emDestaque = null;
+    if (!item) return;
+    item.traverse(function (no) {
+      if (!no.isMesh || !no.userData.materialOriginal) return;
+      // o material vermelho é temporário: devolve o original e descarta o clone
+      if (no.material && no.material !== no.userData.materialOriginal) {
+        if (no.material.dispose) no.material.dispose();
+      }
+      no.material = no.userData.materialOriginal;
+    });
+    item.userData.realcado = false;
+  }
+
+  function destacarSobOMarreta(clientX, clientY) {
+    if (!modoConstrucao.construcoes.length) return;
+    var alvo = objetoEm(clientX, clientY, modoConstrucao.construcoes);
+    while (alvo && alvo.parent && !alvo.userData.permanente) alvo = alvo.parent;
+    if (alvo && !alvo.userData.permanente) alvo = null;
+    if (alvo === modoConstrucao.emDestaque) return;
+    soltarDestaqueRemocao();
+    if (!alvo) return;
+    modoConstrucao.emDestaque = alvo;
+    realcarParaRemocao(alvo);
+  }
+  // ==========================================================
+  // COLISÃO DAS CONSTRUÇÕES
+  // ==========================================================
+  // Mesmo padrão das árvores e rochas decorativas: quem empurra o
+  // personagem é o teste de colisão do laço principal, que lê `obstaculos`.
+  // Sem esta etapa o fazendeiro atravessava tratores, drones e árvores.
+  function registrarColisao(item, itemId) {
+    var medida = D.CONSTRUCOES.itens[itemId] || { raio: 0.35, altura: 0.6 };
+    var colisao = {
+      pos: item.position.clone(),
+      raio: medida.raio,
+      altura: medida.altura,
+      construcao: item
+    };
+    item.userData.colisao = colisao;
+    obstaculos.push(colisao);
+  }
+
+  function removerColisao(item) {
+    if (!item.userData.colisao) return;
+    var i = obstaculos.indexOf(item.userData.colisao);
+    if (i >= 0) obstaculos.splice(i, 1);
+    item.userData.colisao = null;
+  }
+
+  // ==========================================================
+  // CRIAR / RECONSTRUIR CONSTRUÇÕES
+  // ==========================================================
+  function criarConstrucao(itemId, bloco, rotacao) {
     var item = criarModeloItem(itemId);
-    var posBloco = posicaoDe(blocoNaPosicao);
-    item.position.set(posBloco[0], 0, posBloco[2]);
+    var p = posicaoDe(bloco);
+    item.position.set(p[0], 0, p[2]);
+    item.rotation.y = (rotacao || 0) * ANGULO_GIRO;
     item.userData.permanente = true;
-    item.userData.blocoX = blocoNaPosicao.x;
-    item.userData.blocoZ = blocoNaPosicao.z;
+    item.userData.itemId = itemId;
+    item.userData.blocoX = bloco.x;
+    item.userData.blocoZ = bloco.z;
+    item.userData.rotacao = rotacao || 0;
     grupoEstruturas.add(item);
-    modoConstrucao.itemsPosicionados.push(item);
-    
-    // Decrementar quantidade
-    estado.itens[itemId]--;
-    
-    // Atualizar UI
-    atualizarInventarioConstrucao();
-    atualizarUI();
-    C.salvar(estado);
-    
-    aviso('Item colocado! Lote (' + (loteX + 1) + ', ' + (loteZ + 1) + ')', false);
-    
-    // Remover preview e limpar estado
-    grupoEstruturas.remove(modoConstrucao.preview);
-    modoConstrucao.preview = null;
-    modoConstrucao.itemSelecionado = null;
-    modoConstrucao.arrastando = false;
-    
-    // Remover classe do body
-    document.body.classList.remove('arrastando-item');
-    
-    // Remover destaque e classe arrastando
-    var itens = document.querySelectorAll('.item-construcao');
-    itens.forEach(function(el) { 
-      el.classList.remove('selecionado');
-      el.classList.remove('arrastando');
-    });
+    modoConstrucao.construcoes.push(item);
+    registrarColisao(item, itemId);
+    return item;
   }
-  
-  // Cancelar arraste
-  function cancelarArrasteItem() {
-    if (modoConstrucao.preview) {
-      grupoEstruturas.remove(modoConstrucao.preview);
-      modoConstrucao.preview = null;
-    }
-    modoConstrucao.itemSelecionado = null;
-    modoConstrucao.arrastando = false;
-    
-    // Remover classe do body
-    document.body.classList.remove('arrastando-item');
-    
-    // Remover destaque e classe arrastando
-    var itens = document.querySelectorAll('.item-construcao');
-    itens.forEach(function(el) { 
-      el.classList.remove('selecionado');
-      el.classList.remove('arrastando');
+
+  // (Re)cria os itens 3D a partir do estado salvo. Roda no início do jogo,
+  // antes de qualquer interação: é o que faz a construção voltar exatamente
+  // onde estava (posição e rotação) depois de recarregar a página.
+  function reconstruirConstrucoes() {
+    modoConstrucao.construcoes.slice().forEach(function (item) {
+      if (item === modoConstrucao.emDestaque) soltarDestaqueRemocao();
+      removerColisao(item);
+      discardarObjeto(item);
     });
-    
-    aviso('Arraste cancelado', false);
-  }
-  
-  // Destacar item selecionado no inventário
-  function destacarItemSelecionado(itemId) {
-    var itens = document.querySelectorAll('.item-construcao');
-    itens.forEach(function(item) {
-      item.classList.remove('selecionado');
-    });
-    
-    // Encontrar e destacar o item selecionado
-    itens.forEach(function(item) {
-      var info = item.querySelector('.info .nome');
-      if (info && info.textContent.toLowerCase().includes(itemId.toLowerCase())) {
-        item.classList.add('selecionado');
-      }
+    modoConstrucao.construcoes.length = 0;
+
+    if (!Array.isArray(estado.construcoes)) estado.construcoes = [];
+    estado.construcoes.forEach(function (c) {
+      var bloco = C.blocoEm(estado, c.blocoX, c.blocoZ);
+      if (!bloco) return;
+      criarConstrucao(c.itemId, bloco, c.rotacao);
     });
   }
 
+
+  
+  // ==========================================================
+  // COLOCAR E REMOVER
+  // ==========================================================
+  function nomeDoItem(itemId) {
+    var construcao = D.CONSTRUCOES.itens[itemId];
+    if (construcao) return construcao.nome;
+    var equip = D.EQUIPAMENTOS[itemId] || D.ENERGIA[itemId];
+    return equip ? equip.nome : itemId;
+  }
+
+  // Registra a construção no estado salvo e cria o objeto 3D.
+  // NÃO decrementa `estado.itens`: esse contador é o de propriedade e
+  // alimenta producaoEnergia(), indiceDePegada() e usarEquipamento() em
+  // game-core.js. Consumir a unidade ao posicionar desligaria o efeito de
+  // jogo do equipamento só porque ele virou decoração no mapa.
+  function confirmarColocacao() {
+    var itemId = modoConstrucao.itemSelecionado;
+    if (!itemId) return;
+
+    if (C.construcoesDoItem(estado, itemId) <= 0) {
+      aviso('Você já colocou todas as unidades de ' + nomeDoItem(itemId) + '.', true);
+      cancelarArrasteItem(true);
+      return;
+    }
+
+    if (!modoConstrucao.preview || !modoConstrucao.preview.visible) {
+      aviso('Leve o item até um bloco verde do seu terreno.', true);
+      cancelarArrasteItem(true);
+      return;
+    }
+
+    var encaixe = snapToGrid(modoConstrucao.preview.position.x, modoConstrucao.preview.position.z);
+    var bloco = C.blocoEm(estado, encaixe.blocoX, encaixe.blocoZ);
+    if (!bloco) {
+      aviso('Posição inválida.', true);
+      cancelarArrasteItem(true);
+      return;
+    }
+
+    // Regra única: um bloco livre, uma construção, e nunca sobre
+    // cultivo ou estrutura já existente.
+    var conferencia = C.conferirConstrucao(estado, bloco);
+    if (!conferencia.ok) {
+      aviso(conferencia.msg, true);
+      cancelarArrasteItem(true);
+      return;
+    }
+
+    // ---- PERSISTÊNCIA: este registro é o que sobrevive ao F5 ----
+    if (!Array.isArray(estado.construcoes)) estado.construcoes = [];
+    estado.construcoes.push({
+      itemId: itemId,
+      blocoX: bloco.x,
+      blocoZ: bloco.z,
+      rotacao: modoConstrucao.rotacao
+    });
+    criarConstrucao(itemId, bloco, modoConstrucao.rotacao);
+    C.salvar(estado);
+
+    aviso(nomeDoItem(itemId) + ' pronto no terreno, girado ' + (modoConstrucao.rotacao * 90) + '°.', false);
+
+    // mantém o item selecionado para construir vários em sequência
+    soltarPreview();
+    fimDoArraste();
+    modoConstrucao.previewValido = false;
+    atualizarInventarioConstrucao();
+    atualizarUI();
+  }
+
+  // Deletar item clicado
+  function deletarItemConstrucao(item) {
+    if (!item || !item.userData || !item.userData.permanente) return false;
+
+    var itemId = item.userData.itemId;
+    var blocoX = item.userData.blocoX;
+    var blocoZ = item.userData.blocoZ;
+
+    if (modoConstrucao.emDestaque === item) soltarDestaqueRemocao();
+    removerColisao(item);
+    discardarObjeto(item);
+
+    var i = modoConstrucao.construcoes.indexOf(item);
+    if (i >= 0) modoConstrucao.construcoes.splice(i, 1);
+
+    // Some do estado salvo junto com a cena: recarregar não ressuscita
+    if (Array.isArray(estado.construcoes)) {
+      estado.construcoes = estado.construcoes.filter(function (c) {
+        return !(c.blocoX === blocoX && c.blocoZ === blocoZ && c.itemId === itemId);
+      });
+    }
+
+    C.salvar(estado);
+    atualizarInventarioConstrucao();
+    atualizarUI();
+    aviso(nomeDoItem(itemId) + ' retirado do terreno. Continua sendo seu na fazenda.', false);
+    return true;
+  }
+  
+  // ==========================================================
+  // ARRASTAR E SOLTAR (Pointer Events: mouse e toque)
+  // ==========================================================
+  // O item é "pego" num pointerdown e accompanies o ponteiro até o
+  // pointerup. Funciona igual com mouse, caneta e dedo.
+  function selecionarItemParaConstruir(itemId) {
+    if (!modoConstrucao.ativo) return false;
+    if (modoConstrucao.modoDeletar) desativarModoDeletar(true);
+    if (C.construcoesDoItem(estado, itemId) <= 0) {
+      aviso('Você não tem ' + nomeDoItem(itemId) + ' disponível para construir.', true);
+      return false;
+    }
+
+    modoConstrucao.itemSelecionado = itemId;
+    modoConstrucao.rotacao = 0;
+
+    // cria o preview translúcido
+    soltarPreview();
+    try {
+      modoConstrucao.preview = criarPreviewItem(itemId);
+      if (!modoConstrucao.preview) throw new Error('preview vazio');
+      modoConstrucao.preview.visible = false;
+      grupoEstruturas.add(modoConstrucao.preview);
+    } catch (erro) {
+      soltarPreview();
+      modoConstrucao.itemSelecionado = null;
+      aviso('Não consegui preparar ' + nomeDoItem(itemId) + ' para construir. Tente de novo.', true);
+      return false;
+    }
+
+    destacarItemSelecionado(itemId);
+    atualizarControlesConstrucao();
+    return true;
+  }
+
+  function iniciarArrastarItem(itemId, ev) {
+    if (!modoConstrucao.ativo) return;
+    if (!selecionarItemParaConstruir(itemId)) return;
+
+    modoConstrucao.arrastando = true;
+    modoConstrucao.ponteiroId = ev.pointerId;
+    modoConstrucao.origem = { x: ev.clientX, y: ev.clientY };
+    document.body.classList.add('arrastando-item');
+
+    var itemEl = document.querySelector('.item-construcao[data-item-id="' + itemId + '"]');
+    if (itemEl) itemEl.classList.add('arrastando');
+    atualizarControlesConstrucao();
+  }
+
+  // Move o preview para o bloco sob o ponteiro e pinta de verde ou vermelho.
+  function moverPreview(clientX, clientY) {
+    var preview = modoConstrucao.preview;
+    if (!preview) return;
+
+    var ponto = pontoNoChao(clientX, clientY);
+    if (!ponto || !dentroDoTabuleiro(ponto.x, ponto.z)) {
+      preview.visible = false;
+      modoConstrucao.previewValido = false;
+      modoConstrucao.previewMotivo = 'Leve o item até um bloco do seu terreno.';
+      atualizarControlesConstrucao();
+      return;
+    }
+
+    var encaixe = snapToGrid(ponto.x, ponto.z);
+    var bloco = C.blocoEm(estado, encaixe.blocoX, encaixe.blocoZ);
+    var conferencia = C.conferirConstrucao(estado, bloco);
+
+    preview.visible = true;
+    preview.position.set(encaixe.x, 0, encaixe.z);
+    preview.rotation.y = modoConstrucao.rotacao * ANGULO_GIRO;
+    modoConstrucao.previewValido = conferencia.ok;
+    modoConstrucao.previewMotivo = conferencia.msg;
+    pintarPreview(conferencia.ok);
+    atualizarControlesConstrucao();
+  }
+
+  function pintarPreview(valido) {
+    var preview = modoConstrucao.preview;
+    if (!preview) return;
+    preview.traverse(function (no) {
+      if (!no.isMesh || !no.material) return;
+      if (no.material.emissive) no.material.emissive.setHex(valido ? COR_PREVIEW_OK : COR_PREVIEW_NOK);
+      if (no.material.emissiveIntensity !== undefined) {
+        no.material.emissiveIntensity = valido ? 0.35 : 0.7;
+      }
+      no.material.opacity = valido ? 0.65 : 0.5;
+    });
+  }
+
+  // Gira o preview em 90 graus (botão na UI ou tecla R)
+  function girarPreview() {
+    if (!modoConstrucao.preview) return;
+    modoConstrucao.rotacao = (modoConstrucao.rotacao + 1) % 4;
+    modoConstrucao.preview.rotation.y = modoConstrucao.rotacao * ANGULO_GIRO;
+    atualizarControlesConstrucao();
+  }
+
+  function soltarPreview() {
+    if (!modoConstrucao.preview) return;
+    discardarObjeto(modoConstrucao.preview);
+    modoConstrucao.preview = null;
+  }
+
+  // O ponteiro está sobre o painel de construções? Nesse caso um toque
+  // simples só seleciona o item: quem posiciona é o toque no mapa.
+  function ponteiroSobreInventario(ev) {
+    var alvo = ev.target;
+    return !!(alvo && alvo.closest && alvo.closest('.inventario-construcao'));
+  }
+
+  // Encerra o gesto de arraste: solta as classes de cursor e destaque.
+  // Usado tanto ao soltar (colocar) quanto ao só selecionar o item.
+  function fimDoArraste() {
+    modoConstrucao.arrastando = false;
+    modoConstrucao.ponteiroId = null;
+    modoConstrucao.origem = null;
+    document.body.classList.remove('arrastando-item');
+    document.querySelectorAll('.item-construcao.arrastando').forEach(function (el) {
+      el.classList.remove('arrastando');
+    });
+  }
+
+  // Cancelar arraste (Esc, botão direito ou botão Cancelar da UI)
+  function cancelarArrasteItem(silencioso) {
+    soltarPreview();
+    fimDoArraste();
+    modoConstrucao.previewValido = false;
+    modoConstrucao.previewMotivo = '';
+    modoConstrucao.itemSelecionado = null;
+    modoConstrucao.rotacao = 0;
+    document.querySelectorAll('.item-construcao.selecionado').forEach(function (el) {
+      el.classList.remove('selecionado');
+    });
+    atualizarControlesConstrucao();
+    if (!silencioso) aviso('Construção cancelada.', false);
+  }
+
+  // Controles visíveis da UI de construção: botões de girar/cancelar
+  // (essenciais no toque) e a linha de status com o motivo do bloqueio.
+  // Só escreve no DOM quando o texto muda: é chamada a cada pointermove.
+  function textoDeStatus() {
+    if (modoConstrucao.modoDeletar) {
+      return 'Marreta armada: toque na construção destacada para retirar.';
+    }
+    if (!modoConstrucao.preview) {
+      return 'Arraste um item até o terreno, ou toque nele e depois no bloco.';
+    }
+    if (modoConstrucao.previewValido) {
+      return 'Soltar aqui: ' + nomeDoItem(modoConstrucao.itemSelecionado) + ' · ' +
+        (modoConstrucao.rotacao * 90) + '°';
+    }
+    return modoConstrucao.previewMotivo || 'Soltar aqui.';
+  }
+
+  function atualizarControlesConstrucao() {
+    var painel = ui('controles-construcao');
+    var status = ui('status-construcao');
+    var angulo = ui('angulo-construcao');
+    var cancelar = ui('cancelar-construcao');
+    var girar = ui('girar-construcao');
+
+    if (painel) painel.hidden = !modoConstrucao.ativo;
+    if (girar) girar.disabled = !modoConstrucao.preview;
+    if (cancelar) cancelar.disabled = !modoConstrucao.preview && !modoConstrucao.modoDeletar;
+    if (angulo) {
+      var grafico = modoConstrucao.itemSelecionado && modoConstrucao.itemSelecionado !== 'marreta'
+        ? (modoConstrucao.rotacao * 90) + '°'
+        : '--';
+      if (angulo.textContent !== grafico) angulo.textContent = grafico;
+    }
+    if (!status) return;
+    var msg = textoDeStatus();
+    if (status.textContent !== msg) status.textContent = msg;
+  }
+
+  // Destacar item selecionado no inventário
+  function destacarItemSelecionado(itemId) {
+    document.querySelectorAll('.item-construcao').forEach(function (el) {
+      el.classList.toggle('selecionado', !!itemId && el.dataset.itemId === itemId);
+    });
+  }
+  
   // modo construcao
-  var modoConstrucao = { ativo: false, itemId: null, preview: null };
   var reduzirMovimento = global.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var az = 0.6;
   var pol = 0.72;
@@ -662,11 +854,47 @@
     olhando: false,
     velo: 9
   };
+  // Preenchido em ligarInteracoes(); fica no escopo do módulo para que
+  // outros fluxos (o modo construção) possam sair da câmera livre.
+  var desligarLivre = function () {};
 
   var TILE = 1;
   var GAP = 0;
   var STEP = TILE + GAP;
   var meio = ((D.GRADE - 1) * STEP) / 2;
+
+  // ---- raycast compartilhado (mouse e toque usam o mesmo caminho) ----
+  var raio = new THREE.Raycaster();
+  var ponteiroNdc = new THREE.Vector2();
+  var planoChao = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  var pontoChao = new THREE.Vector3();
+
+  // Aponta o raycaster para a posição de tela informada.
+  function mirarPonteiro(clientX, clientY) {
+    var palco = el('#stage');
+    if (!palco || !camera) return false;
+    var r = palco.getBoundingClientRect();
+    if (!r.width || !r.height) return false;
+    ponteiroNdc.x = ((clientX - r.left) / r.width) * 2 - 1;
+    ponteiroNdc.y = -((clientY - r.top) / r.height) * 2 + 1;
+    raio.setFromCamera(ponteiroNdc, camera);
+    return true;
+  }
+
+  // Ponto do chão (y = 0) sob o ponteiro. Devolve um vetor reutilizado:
+  // use o resultado imediatamente, não guarde referência.
+  function pontoNoChao(clientX, clientY) {
+    if (!mirarPonteiro(clientX, clientY)) return null;
+    return raio.ray.intersectPlane(planoChao, pontoChao) ? pontoChao : null;
+  }
+
+  // Primeiro objeto intersectado de uma lista, ou null
+  function objetoEm(clientX, clientY, lista) {
+    if (!lista || !lista.length) return null;
+    if (!mirarPonteiro(clientX, clientY)) return null;
+    var acertos = raio.intersectObjects(lista, true);
+    return acertos.length ? acertos[0].object : null;
+  }
 
   function el(sel) { return document.querySelector(sel); }
   function ui(nome) { return document.querySelector('[data-ui="' + nome + '"]'); }
@@ -1083,7 +1311,8 @@
 
   // ===== FUNCAO PRINCIPAL PARA MONTAR DECORACOES =====
   function montarDecoracoes() {
-    obstaculos = []; // Limpar obstáculos
+    // preserva as colisões das construções do modo construção
+    obstaculos = obstaculos.filter(function (obs) { return !obs.construcao; });
     
     var raioMapa = D.GRADE * STEP / 2 + 6;
     var distanciaMontanha = raioMapa + 8;
@@ -1459,9 +1688,16 @@
     } else if (itemId === 'regador') {
       g.add(construirRegador());
       g.userData.tipo = 'ferramenta';
+    } else if (D.ENERGIA[itemId]) {
+      // itens de energia (painel, turbina, poste, bateria, caixa) reaproveitam
+      // o mesmo modelo que já aparece quando viram estrutura de bloco
+      var energia = malhaDeEstrutura(itemId);
+      g.add(energia);
+      if (energia.userData.gira) g.userData.gira = energia.userData.gira;
+      if (energia.userData.lampada) g.userData.lampada = energia.userData.lampada;
+      g.userData.tipo = 'energia';
     } else {
       // Item genérico caso não seja reconhecido
-      console.warn('Item não reconhecido:', itemId);
       var placeholder = caixaDe(0x888888, 0.3, 0.3, 0.3, null, 0.15);
       g.add(placeholder);
       g.userData.tipo = 'estatico';
@@ -1480,50 +1716,24 @@
   
   // Função para criar preview transparente do item
   function criarPreviewItem(itemId) {
-    console.log('Criando preview para:', itemId); // DEBUG
-    
     var preview = criarModeloItem(itemId);
-    
-    if (!preview) {
-      console.error('criarModeloItem retornou null/undefined para', itemId);
-      return null;
-    }
-    
-    console.log('Preview criado, aplicando materiais transparentes...'); // DEBUG
-    
+    if (!preview) return null;
+
     // Aplicar material transparente em todos os meshes
-    preview.traverse(function(obj) {
+    preview.traverse(function (obj) {
       if (obj.isMesh && obj.material) {
         // Clonar material para não afetar outros objetos
         var mat = obj.material.clone();
         mat.transparent = true;
-        mat.opacity = 0.6;
-        
-        // Garantir que tem propriedade emissive
-        if (!mat.emissive) {
-          mat.emissive = new THREE.Color(0x4af0ff);
-        } else {
-          mat.emissive.setHex(0x4af0ff);
-        }
-        mat.emissiveIntensity = 0.3;
-        
-        // Desabilitar depthWrite para melhor transparência
+        mat.opacity = 0.65;
+        if (mat.emissive) mat.emissive.setHex(COR_PREVIEW_OK);
+        if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.35;
         mat.depthWrite = false;
-        
-        // Renderizar por cima de outros objetos
         obj.renderOrder = 999;
-        
         obj.material = mat;
-        
-        console.log('Material aplicado ao mesh'); // DEBUG
       }
     });
-    
-    // Ajustar a posição Y para o item ficar visível (acima do chão)
-    preview.position.y = 0.3;
-    
-    console.log('Preview finalizado com', preview.children.length, 'children'); // DEBUG
-    
+
     return preview;
   }
   
@@ -1572,7 +1782,7 @@
     gota.userData.velocidade = -0.01;
     gota.userData.vida = 1.0;
     grupoDecoracoes.add(gota);
-    modoConstrucao.animacoes.push(gota);
+    modoConstrucao.particulas.push(gota);
   }
   
   // Partículas de vapor
@@ -1589,7 +1799,7 @@
     vapor.userData.velocidade = 0.005;
     vapor.userData.vida = 1.0;
     grupoDecoracoes.add(vapor);
-    modoConstrucao.animacoes.push(vapor);
+    modoConstrucao.particulas.push(vapor);
   }
   
   // Função para cortar árvore decorativa
@@ -1610,18 +1820,17 @@
         // Remover árvore
         grupoDecoracoes.remove(arvore);
         
-        // Remover obstáculo
+        // Remover obstáculo (só o da árvore: construções têm marca própria)
         var idx = obstaculos.findIndex(function(obs) {
-          return obs.pos.distanceTo(arvore.position) < 0.1;
+          return !obs.construcao && obs.pos.distanceTo(arvore.position) < 0.1;
         });
         if (idx >= 0) obstaculos.splice(idx, 1);
         
-        // Diminuir pegada ecológica
-        if (estado) {
-          C.modificarPegada(estado, -5);
-          aviso('Árvore cortada! Pegada ecológica -5', false);
-          atualizarUI();
-        }
+        // Árvore nativa cortada. A pegada ecológica é calculada a partir
+        // dos blocos (C.indiceDePegada), então não existe um "modificarPegada"
+        // para chamar aqui: cortar a decoração não altera o placar.
+        aviso('Árvore cortada! O terreno perdeu a sombra dela.', false);
+        atualizarUI();
         
         // Criar toras no chão
         criarTorasNoChao(arvore.position.x, arvore.position.z);
@@ -1749,22 +1958,13 @@
       malha.material.roughness = b.bloqueado ? 0.98 : 0.88;
     });
 
-    // Salvar itens do modo construção antes de limpar
-    var itensConstrucao = [];
-    grupoEstruturas.children.forEach(function(child) {
-      if (child.userData && child.userData.permanente) {
-        itensConstrucao.push(child);
-      }
-    });
-    
-    // estruturas e culturas
+    // Estruturas e culturas do modo construção sobrevivem ao redesenho
     grupoEstruturas.clear();
-    
-    // Re-adicionar itens do modo construção
-    itensConstrucao.forEach(function(item) {
+    modoConstrucao.construcoes.forEach(function (item) {
       grupoEstruturas.add(item);
     });
-    
+    if (modoConstrucao.preview) grupoEstruturas.add(modoConstrucao.preview);
+
     var noturnas = [];
     estado.blocos.forEach(function (b) {
       if (b.bloqueado) return;
@@ -1784,115 +1984,177 @@
     });
     noturnas.forEach(function (n) { n.userData.turno = true; });
     houveEstruturaNoturna = noturnas.length > 0;
+
+    // se um lote foi comprado desde a última montagem, a grade de
+    // construção está desatualizada: refaz agora
+    reconstruirGradeConstrucao();
+
     return noturnas;
   }
 
+  // Função para criar ícones SVG personalizados (usada em vários lugares)
+  function criarIconeSVG(id) {
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '22');
+    svg.setAttribute('height', '22');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.style.flexShrink = '0';
+    
+    var path = '';
+    
+    if (id === 'plantar') {
+      // Semente com broto
+      path = '<path d="M12 22v-8m0 0c-2-1-4-3-4-6 0-2.5 1.8-4 4-4s4 1.5 4 4c0 3-2 5-4 6z"/>' +
+             '<circle cx="12" cy="3" r="1" fill="currentColor"/>' +
+             '<path d="M8 14c-1 1-2 2-2 4h12c0-2-1-3-2-4"/>';
+    } else if (id === 'regar') {
+      // Gotas de água
+      path = '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>' +
+             '<path d="M12 18v-4m-2 2h4"/>';
+    } else if (id === 'adubar') {
+      // Saco com nutrientes
+      path = '<path d="M8 2v4m8-4v4M6 6h12l1.5 14a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1L6 6z"/>' +
+             '<circle cx="10" cy="13" r="1" fill="currentColor"/>' +
+             '<circle cx="14" cy="15" r="1" fill="currentColor"/>' +
+             '<circle cx="12" cy="17" r="1" fill="currentColor"/>';
+    } else if (id === 'colher') {
+      // Foice de colheita
+      path = '<path d="M4 19c0-4 4-7 7-7 4 0 9 2 9 7"/>' +
+             '<path d="M11 12V4m0 0L8 7m3-3l3 3"/>' +
+             '<circle cx="8" cy="19" r="1" fill="currentColor"/>' +
+             '<circle cx="12" cy="19" r="1" fill="currentColor"/>' +
+             '<circle cx="16" cy="19" r="1" fill="currentColor"/>';
+    } else if (id === 'despoluir') {
+      // Vassoura com brilho
+      path = '<path d="M12 3v15m0 0l-3 3h6l-3-3z"/>' +
+             '<path d="M9 18v-5h6v5M7 3l1 1m8-1l-1 1M3 7l1-1m16 1l-1-1"/>';
+    } else if (id === 'enxada') {
+      // Enxada
+      path = '<path d="M14 4h3a2 2 0 0 1 2 2v3l-6 6m0 0l-8 8m8-8l-3-3"/>' +
+             '<rect x="16" y="2" width="5" height="5" rx="1" transform="rotate(45 18.5 4.5)" stroke-width="1.5"/>';
+    } else if (id === 'regador') {
+      // Regador com água saindo
+      path = '<ellipse cx="11" cy="11" rx="4" ry="2.5"/>' +
+             '<path d="M11 8.5V3m0 0L9 5m2-2l2 2M7 13.5l-2 8h12l-2-8"/>' +
+             '<path d="M9 19l.5 2m2.5-2l.5 2m2.5-2l.5 2" stroke-width="1"/>';
+    } else if (id === 'machado') {
+      // Machado
+      path = '<path d="M7 22V2m0 0h6a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4H7m0-10v10"/>' +
+             '<path d="M13 6h4m-4 2h3" stroke-width="1.5"/>';
+    } else if (id === 'construcao') {
+      // Modo construção (martelo + ferramenta)
+      path = '<path d="M14.5 2l-4 4m0 0L6 10.5 13.5 18 18 13.5 13.5 9l-3-3z"/>' +
+             '<path d="M10 14l-6 6m12-12l6-6"/>' +
+             '<rect x="2" y="18" width="4" height="4" rx="1"/>' +
+             '<circle cx="19" cy="5" r="2" fill="currentColor"/>';
+    } else if (id === 'arvore') {
+      // Árvore com folhas
+      path = '<path d="M12 3v18M8 5c0 4 4 6 4 6s4-2 4-6c0-3-1.8-5-4-5s-4 2-4 5z"/>' +
+             '<circle cx="8" cy="7" r="1.5" fill="currentColor"/>' +
+             '<circle cx="16" cy="7" r="1.5" fill="currentColor"/>' +
+             '<circle cx="12" cy="4" r="1.5" fill="currentColor"/>';
+    } else if (id === 'dinheiro') {
+      // Moedas
+      path = '<circle cx="12" cy="12" r="9"/>' +
+             '<path d="M14.5 9a2.5 2.5 0 0 0-5 0v.5m0 5v.5a2.5 2.5 0 0 0 5 0M12 7v10"/>';
+    } else if (id === 'energia') {
+      // Raio de energia
+      path = '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor" stroke="none"/>';
+    } else if (id === 'agua') {
+      // Gota d'água
+      path = '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>';
+    } else if (id === 'nivel') {
+      // Estrela
+      path = '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor" stroke="none"/>';
+    } else if (id === 'xp') {
+      // Alvo com seta
+      path = '<circle cx="12" cy="12" r="10"/>' +
+             '<circle cx="12" cy="12" r="6"/>' +
+             '<circle cx="12" cy="12" r="2" fill="currentColor"/>' +
+             '<path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>';
+    } else if (id === 'pegada') {
+      // Folha ecológica
+      path = '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>' +
+             '<path d="M9.5 9.5c1 .5 1.5 2 1.5 2s1-.5 2-1.5"/>' +
+             '<path d="M10 14c.5 1 1.5 2 2 2s1.5-1 2-2"/>';
+    } else if (id === 'sol') {
+      // Sol
+      path = '<circle cx="12" cy="12" r="4" fill="currentColor"/>' +
+             '<path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
+    } else if (id === 'lua') {
+      // Lua crescente
+      path = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor"/>';
+    } else if (id === 'nuvem') {
+      // Nuvem
+      path = '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>';
+    } else if (id === 'chuva') {
+      // Nuvem com chuva
+      path = '<path d="M16 13v8m-4-6v6m-4-3v5M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>';
+    } else if (id === 'neve') {
+      // Floco de neve
+      path = '<path d="M12 2v20M2 12h20M5.64 5.64l12.72 12.72M18.36 5.64L5.64 18.36"/>' +
+             '<circle cx="12" cy="2" r="1" fill="currentColor"/>' +
+             '<circle cx="12" cy="22" r="1" fill="currentColor"/>' +
+             '<circle cx="2" cy="12" r="1" fill="currentColor"/>' +
+             '<circle cx="22" cy="12" r="1" fill="currentColor"/>';
+    } else if (id === 'vento') {
+      // Linhas de vento
+      path = '<path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/>';
+    } else if (id === 'amanhecer') {
+      // Nascer do sol
+      path = '<path d="M17 18a5 5 0 0 0-10 0"/>' +
+             '<path d="M12 9V2m0 0L9 5m3-3l3 3"/>' +
+             '<path d="M4.22 10.22l1.42 1.42m12.72 0l1.42-1.42M2 18h2m16 0h2"/>';
+    } else if (id === 'entardecer') {
+      // Pôr do sol
+      path = '<path d="M17 18a5 5 0 0 0-10 0"/>' +
+             '<path d="M12 9v9m-5.66-4.34l1.42 1.42m8.48 0l1.42-1.42M3.34 18h1.42m14.48 0h1.42"/>' +
+             '<circle cx="12" cy="9" r="2" fill="currentColor"/>';
+    }
+    
+    svg.innerHTML = path;
+    return svg;
+  }
+
+  // Inicializar ícones fixos da barra de informações
+  function inicializarIconesInfo() {
+    // Precisa estar dentro ou depois de criarIconeSVG ser definida
+    // Será chamada após montarFerramentas definir criarIconeSVG
+  }
 
   function montarFerramentas() {
     var caixa = ui('ferramentas');
     caixa.textContent = '';
     
-    // Função para criar ícones SVG personalizados
-    function criarIconeSVG(id) {
-      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('fill', 'none');
-      svg.setAttribute('stroke', 'currentColor');
-      svg.setAttribute('stroke-width', '2');
-      svg.setAttribute('stroke-linecap', 'round');
-      svg.setAttribute('stroke-linejoin', 'round');
-      svg.style.flexShrink = '0';
-      
-      var path = '';
-      
-      if (id === 'plantar') {
-        // Semente com broto
-        path = '<path d="M12 22v-8m0 0c-2-1-4-3-4-6 0-2.5 1.8-4 4-4s4 1.5 4 4c0 3-2 5-4 6z"/>' +
-               '<circle cx="12" cy="3" r="1" fill="currentColor"/>' +
-               '<path d="M8 14c-1 1-2 2-2 4h12c0-2-1-3-2-4"/>';
-      } else if (id === 'regar') {
-        // Gotas de água
-        path = '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>' +
-               '<path d="M12 18v-4m-2 2h4"/>';
-      } else if (id === 'adubar') {
-        // Saco com nutrientes
-        path = '<path d="M8 2v4m8-4v4M6 6h12l1.5 14a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1L6 6z"/>' +
-               '<circle cx="10" cy="13" r="1" fill="currentColor"/>' +
-               '<circle cx="14" cy="15" r="1" fill="currentColor"/>' +
-               '<circle cx="12" cy="17" r="1" fill="currentColor"/>';
-      } else if (id === 'colher') {
-        // Foice de colheita
-        path = '<path d="M4 19c0-4 4-7 7-7 4 0 9 2 9 7"/>' +
-               '<path d="M11 12V4m0 0L8 7m3-3l3 3"/>' +
-               '<circle cx="8" cy="19" r="1" fill="currentColor"/>' +
-               '<circle cx="12" cy="19" r="1" fill="currentColor"/>' +
-               '<circle cx="16" cy="19" r="1" fill="currentColor"/>';
-      } else if (id === 'despoluir') {
-        // Vassoura com brilho
-        path = '<path d="M12 3v15m0 0l-3 3h6l-3-3z"/>' +
-               '<path d="M9 18v-5h6v5M7 3l1 1m8-1l-1 1M3 7l1-1m16 1l-1-1"/>';
-      } else if (id === 'enxada') {
-        // Enxada
-        path = '<path d="M14 4h3a2 2 0 0 1 2 2v3l-6 6m0 0l-8 8m8-8l-3-3"/>' +
-               '<rect x="16" y="2" width="5" height="5" rx="1" transform="rotate(45 18.5 4.5)" stroke-width="1.5"/>';
-      } else if (id === 'regador') {
-        // Regador com água saindo
-        path = '<ellipse cx="11" cy="11" rx="4" ry="2.5"/>' +
-               '<path d="M11 8.5V3m0 0L9 5m2-2l2 2M7 13.5l-2 8h12l-2-8"/>' +
-               '<path d="M9 19l.5 2m2.5-2l.5 2m2.5-2l.5 2" stroke-width="1"/>';
-      } else if (id === 'machado') {
-        // Machado
-        path = '<path d="M7 22V2m0 0h6a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4H7m0-10v10"/>' +
-               '<path d="M13 6h4m-4 2h3" stroke-width="1.5"/>';
-      } else if (id === 'construcao') {
-        // Modo construção (martelo + ferramenta)
-        path = '<path d="M14.5 2l-4 4m0 0L6 10.5 13.5 18 18 13.5 13.5 9l-3-3z"/>' +
-               '<path d="M10 14l-6 6m12-12l6-6"/>' +
-               '<rect x="2" y="18" width="4" height="4" rx="1"/>' +
-               '<circle cx="19" cy="5" r="2" fill="currentColor"/>';
-      } else if (id === 'arvore') {
-        // Árvore com folhas
-        path = '<path d="M12 3v18M8 5c0 4 4 6 4 6s4-2 4-6c0-3-1.8-5-4-5s-4 2-4 5z"/>' +
-               '<circle cx="8" cy="7" r="1.5" fill="currentColor"/>' +
-               '<circle cx="16" cy="7" r="1.5" fill="currentColor"/>' +
-               '<circle cx="12" cy="4" r="1.5" fill="currentColor"/>';
-      }
-      
-      svg.innerHTML = path;
-      return svg;
-    }
-    
     FERRAMENTAS.forEach(function (f) {
       var b = document.createElement('button');
       b.type = 'button';
       b.dataset.ferramenta = f.id;
+      b.setAttribute('title', f.nome); // Adiciona tooltip ao hover
       
       // Adicionar ícone SVG
       var icone = criarIconeSVG(f.id);
       icone.style.color = f.cor;
       b.appendChild(icone);
       
-      // Adicionar nome
-      b.appendChild(document.createTextNode(f.nome));
+      // NÃO adicionar nome - apenas SVG
       
       b.addEventListener('click', function () {
-        // Se clicar em "Modo Construção"
+        // Se clicar em "Modo Construção", liga ou desliga
         if (f.id === 'construcao') {
-          if (!modoConstrucao.ativo) {
-            ativarModoConstrucao();
-          } else {
-            desativarModoConstrucao();
-          }
+          if (!modoConstrucao.ativo) ativarModoConstrucao();
+          else desativarModoConstrucao();
           return;
         }
-        
-        // Se modo construção está ativo e clicou em outra ferramenta, desativar
-        if (modoConstrucao.ativo) {
-          desativarModoConstrucao();
-        }
-        
+
+        // Se modo construção está ativo e clicou em outra ferramenta, desativa
+        if (modoConstrucao.ativo) desativarModoConstrucao();
+
         estado.ferramenta = f.id;
         marcarFerramenta();
         atualizarFerramentaMao();
@@ -1900,11 +2162,36 @@
       caixa.appendChild(b);
     });
     marcarFerramenta();
+    
+    // Inicializar ícones fixos da barra de informações
+    var iconesFixos = {
+      'dinheiro': 'dinheiro',
+      'energia': 'energia',
+      'agua': 'agua',
+      'nivel': 'nivel',
+      'xp': 'xp',
+      'pegada': 'pegada'
+    };
+    
+    Object.keys(iconesFixos).forEach(function(key) {
+      var elemento = document.querySelector('[data-icone="' + key + '"]');
+      if (elemento) {
+        elemento.textContent = '';
+        var svg = criarIconeSVG(iconesFixos[key]);
+        svg.setAttribute('width', '18');
+        svg.setAttribute('height', '18');
+        elemento.appendChild(svg);
+      }
+    });
   }
 
+  // O botão "Modo Construção" fica ativo quando o modo está ligado, mesmo
+  // que `estado.ferramenta` seja outra coisa (o modo salva a ferramenta
+  // anterior para devolver o jogo ao estado em que estava).
   function marcarFerramenta() {
+    var ativa = modoConstrucao.ativo ? 'construcao' : estado.ferramenta;
     document.querySelectorAll('[data-ferramenta]').forEach(function (b) {
-      b.classList.toggle('ativo', b.dataset.ferramenta === estado.ferramenta);
+      b.classList.toggle('ativo', b.dataset.ferramenta === ativa);
     });
   }
 
@@ -1942,6 +2229,55 @@
   function pintarUI() {
     var pegada = C.indiceDePegada(estado);
     var clima = D.CLIMAS[estado.clima];
+    
+    // Determinar ícone do clima
+    var idIconeClima = 'sol';
+    if (clima.nome.toLowerCase().includes('chuv')) idIconeClima = 'chuva';
+    else if (clima.nome.toLowerCase().includes('neve') || clima.nome.toLowerCase().includes('frio')) idIconeClima = 'neve';
+    else if (clima.nome.toLowerCase().includes('nublado')) idIconeClima = 'nuvem';
+    else if (clima.nome.toLowerCase().includes('vento')) idIconeClima = 'vento';
+    
+    // Determinar ícone do período do dia com mais granularidade
+    var hora = estado.tempo % 24;
+    var idIconeTempo = 'sol';
+    
+    if (hora >= 0 && hora < 3) {
+      idIconeTempo = 'lua'; // Meia-noite - lua cheia
+    } else if (hora >= 3 && hora < 6) {
+      idIconeTempo = 'lua'; // Madrugada - lua crescente
+    } else if (hora >= 6 && hora < 8) {
+      idIconeTempo = 'amanhecer'; // Amanhecer
+    } else if (hora >= 8 && hora < 12) {
+      idIconeTempo = 'sol'; // Manhã
+    } else if (hora >= 12 && hora < 17) {
+      idIconeTempo = 'sol'; // Tarde
+    } else if (hora >= 17 && hora < 19) {
+      idIconeTempo = 'entardecer'; // Entardecer
+    } else if (hora >= 19 && hora < 21) {
+      idIconeTempo = 'lua'; // Início da noite
+    } else {
+      idIconeTempo = 'lua'; // Noite
+    }
+    
+    // Atualizar ícones SVG
+    var iconeClimaEl = ui('icone-clima');
+    if (iconeClimaEl) {
+      iconeClimaEl.textContent = '';
+      var svgClima = criarIconeSVG(idIconeClima);
+      svgClima.setAttribute('width', '18');
+      svgClima.setAttribute('height', '18');
+      iconeClimaEl.appendChild(svgClima);
+    }
+    
+    var iconeTempoEl = ui('icone-tempo');
+    if (iconeTempoEl) {
+      iconeTempoEl.textContent = '';
+      var svgTempo = criarIconeSVG(idIconeTempo);
+      svgTempo.setAttribute('width', '18');
+      svgTempo.setAttribute('height', '18');
+      iconeTempoEl.appendChild(svgTempo);
+    }
+    
     var valores = {
       dinheiro: '$' + Math.round(estado.dinheiro),
       energia: Math.floor(estado.energia) + '/' + Math.round(estado.energiaMax),
@@ -1949,8 +2285,8 @@
       nivel: String(estado.nivel),
       xp: estado.xp + '/' + D.XP_POR_NIVEL(estado.nivel),
       pegada: pegada + '/100',
-      tempo: 'Dia ' + estado.dias + ' - ' + C.estacaoDe(estado),
-      clima: clima.nome
+      tempo: 'Dia ' + estado.dias,
+      clima: ''
     };
     Object.keys(valores).forEach(function (k) {
       var alvo = ui(k);
@@ -1963,11 +2299,20 @@
     }
   }
 
+  // O cartão da esquerda mostra o bloco escolhido o tempo todo. Sem seleção
+  // ele vira um convite ("clique num bloco para ver") em vez de sumir.
   function pintarInspetor() {
     var caixa = ui('inspetor');
     if (!caixa) return;
-    if (!selecionado) { caixa.hidden = true; return; }
-    caixa.hidden = false;
+    if (!selecionado) {
+      caixa.classList.add('sem-selecao');
+      ui('insp-titulo').textContent = 'Terreno';
+      ui('insp-coords').textContent = 'clique num bloco para ver';
+      ui('insp-selo').textContent = '-';
+      ui('insp-cultivo').textContent = '-';
+      return;
+    }
+    caixa.classList.remove('sem-selecao');
     var b = selecionado;
     ui('insp-titulo').textContent = b.bloqueado ? 'Terreno travado' : (b.nativo ? 'Mata nativa' : 'Bloco de terra');
     ui('insp-coords').textContent = 'coluna ' + (b.x + 1) + ', linha ' + (b.z + 1);
@@ -2169,10 +2514,69 @@
     caixa.appendChild(lista);
   }
 
+  // Inventário do jogador (coluna direita do HUD): o que ele carrega,
+  // incluindo o que já está exposto no terreno pelo modo construção.
+  var ICONES_INVENTARIO = {
+    enxada: '🪓', regador: '💧', trator: '🚜', tratorEletrico: '⚡', drone: '🚁',
+    colheitadeira: '🌾', gotejamento: '💧', composteira: '♻️', arvore: '🌳',
+    painel: '☀️', turbina: '💨', bateria: '🔋', poste: '💡', caixa: '🚰'
+  };
+
+  function pintarInventarioJogador() {
+    var caixa = ui('inventario-jogador');
+    if (!caixa || !estado) return;
+    caixa.textContent = '';
+
+    var grupos = [
+      { fonte: D.EQUIPAMENTOS, ignorar: [] },
+      { fonte: D.ENERGIA, ignorar: [] }
+    ];
+    var linhas = 0;
+
+    grupos.forEach(function (grupo) {
+      Object.keys(grupo.fonte).forEach(function (id) {
+        var total = estado.itens[id] || 0;
+        if (!total) return;
+        var noMapa = C.contarConstrucoes(estado, id);
+        var linha = document.createElement('div');
+        linha.className = 'linha-inventario';
+        if (noMapa) linha.classList.add('construido');
+
+        var icone = document.createElement('span');
+        icone.className = 'icone';
+        icone.textContent = ICONES_INVENTARIO[id] || '•';
+
+        var nome = document.createElement('span');
+        nome.className = 'nome';
+        nome.textContent = grupo.fonte[id].nome + (noMapa ? ' (no terreno)' : '');
+        nome.title = grupo.fonte[id].desc || grupo.fonte[id].nome;
+
+        var qtd = document.createElement('span');
+        qtd.className = 'qtd';
+        qtd.textContent = 'x' + total;
+
+        linha.appendChild(icone);
+        linha.appendChild(nome);
+        linha.appendChild(qtd);
+        caixa.appendChild(linha);
+        linhas++;
+      });
+    });
+
+    if (!linhas) {
+      var vazio = document.createElement('p');
+      vazio.className = 'vazio-inventario';
+      vazio.textContent = 'Nada comprado ainda. Passe na loja.';
+      caixa.appendChild(vazio);
+    }
+  }
+
   function atualizarUI() {
     pintarUI();
     montarSementes();
+    pintarInventarioJogador();
     pintarInspetor();
+    if (modoConstrucao.ativo) atualizarInventarioConstrucao();
     if (!ui('loja').hidden) pintarLoja();
   }
 
@@ -2414,28 +2818,26 @@
     }
     
     // === ANIMAR ITENS COLOCADOS NO MODO CONSTRUCAO ===
-    if (modoConstrucao && modoConstrucao.itemsPosicionados) {
-      modoConstrucao.itemsPosicionados.forEach(function(item) {
+    if (modoConstrucao.construcoes.length) {
+      modoConstrucao.construcoes.forEach(function (item) {
         animarItem(item, dt);
       });
     }
-    
+
     // === ATUALIZAR PARTICULAS ===
-    if (modoConstrucao && modoConstrucao.animacoes) {
-      for (var i = modoConstrucao.animacoes.length - 1; i >= 0; i--) {
-        var particula = modoConstrucao.animacoes[i];
-        particula.userData.vida -= dt * 0.5;
-        
-        if (particula.userData.vida <= 0) {
-          grupoDecoracoes.remove(particula);
-          modoConstrucao.animacoes.splice(i, 1);
-        } else {
-          particula.position.y += particula.userData.velocidade;
-          if (particula.material.opacity) {
-            particula.material.opacity = particula.userData.vida * 0.7;
-          }
-          particula.scale.multiplyScalar(1 + dt * 0.5);
+    for (var i = modoConstrucao.particulas.length - 1; i >= 0; i--) {
+      var particula = modoConstrucao.particulas[i];
+      particula.userData.vida -= dt * 0.5;
+
+      if (particula.userData.vida <= 0) {
+        discardarObjeto(particula);
+        modoConstrucao.particulas.splice(i, 1);
+      } else {
+        particula.position.y += particula.userData.velocidade;
+        if (particula.material.opacity) {
+          particula.material.opacity = particula.userData.vida * 0.7;
         }
+        particula.scale.multiplyScalar(1 + dt * 0.5);
       }
     }
 
@@ -2456,9 +2858,7 @@
   function ligarInteracoes() {
     var palco = el('#stage');
     var mira = ui('mira');
-    var ray = new THREE.Raycaster();
-    var mouse = new THREE.Vector2();
-    var arrastando = false;
+    var arrastando = false;   // arraste de câmera no mapa
     var moveu = false;
     var ultimoX = 0;
     var ultimoY = 0;
@@ -2507,7 +2907,7 @@
       }
     }
 
-    function desligarLivre() {
+    desligarLivre = function () {
       livre.ligado = false;
       livre.vel.set(0, 0, 0);
       livre.teclas = {};
@@ -2517,7 +2917,7 @@
       destravarMouse();
       // volta para a camera de orbita exatamente de onde saiu
       ajustarCamera(az, pol, dist);
-    }
+    };
 
     function alternarLivre() {
       if (livre.ligado) desligarLivre();
@@ -2559,16 +2959,19 @@
     };
 
     function pegar(mouseX, mouseY) {
-      var r = palco.getBoundingClientRect();
-      mouse.x = ((mouseX - r.left) / r.width) * 2 - 1;
-      mouse.y = -((mouseY - r.top) / r.height) * 2 + 1;
-      ray.setFromCamera(mouse, camera);
-      var hits = ray.intersectObjects(malhasBloco, false);
+      if (!mirarPonteiro(mouseX, mouseY)) return null;
+      var hits = raio.intersectObjects(malhasBloco, false);
       return hits.length ? hits[0].object.userData.bloco : null;
     }
 
+    // o ponteiro que comanda o arraste de construção é o mesmo que pegou o
+    // item: um segundo dedo não deve roubar o preview
+    function ponteiroDoArraste(ev) {
+      return modoConstrucao.ponteiroId === null || ev.pointerId === modoConstrucao.ponteiroId;
+    }
+
     palco.addEventListener('pointerdown', function (ev) {
-      if (ev.button !== 0) return;
+      if (ev.button !== 0 && ev.pointerType === 'mouse') return;
       arrastando = true;
       livre.olhando = livre.ligado;
       moveu = false;
@@ -2577,6 +2980,18 @@
     });
 
     global.addEventListener('pointermove', function (ev) {
+      // === MODO CONSTRUÇÃO: preview segue o ponteiro ===
+      if (modoConstrucao.ativo && modoConstrucao.preview && ponteiroDoArraste(ev)) {
+        moverPreview(ev.clientX, ev.clientY);
+        return;
+      }
+
+      // === MODO CONSTRUÇÃO: destaque do que a marreta vai tirar ===
+      if (modoConstrucao.ativo && modoConstrucao.modoDeletar) {
+        destacarSobOMarreta(ev.clientX, ev.clientY);
+        return;
+      }
+
       if (livre.ligado) {
         if (!livre.olhando) return;
         // com o cursor travado o movimento e relativo e nao tem borda
@@ -2593,96 +3008,7 @@
         aplicarLivre();
         return;
       }
-      
-      // === MODO CONSTRUCAO: ATUALIZAR PREVIEW DURANTE ARRASTE ===
-      if (modoConstrucao.ativo && modoConstrucao.arrastando && modoConstrucao.preview) {
-        console.log('Movendo preview...'); // DEBUG
-        
-        var r = palco.getBoundingClientRect();
-        mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
-        mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
-        ray.setFromCamera(mouse, camera);
-        
-        // Raycast no chão (plano Y=0)
-        var planoChao = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-        var pontoIntersecao = new THREE.Vector3();
-        var intersectou = ray.ray.intersectPlane(planoChao, pontoIntersecao);
-        
-        console.log('Intersectou:', intersectou, 'Ponto:', pontoIntersecao); // DEBUG
-        
-        if (intersectou && pontoIntersecao) {
-          // Aplicar snap to grid (agora retorna também os índices de bloco)
-          var snapped = snapToGrid(pontoIntersecao.x, pontoIntersecao.z);
-          
-          console.log('Snapped:', snapped); // DEBUG
-          
-          // Buscar bloco usando os índices corretos
-          var blocoValido = C.blocoEm(estado, snapped.blocoX, snapped.blocoZ);
-          
-          console.log('Bloco encontrado:', blocoValido); // DEBUG
-          
-          if (blocoValido && !blocoValido.bloqueado) {
-            console.log('Bloco válido:', blocoValido.x, blocoValido.z); // DEBUG
-            
-            // Verificar se o bloco está em lote comprado
-            var loteX = Math.floor(blocoValido.x / D.LOTE);
-            var loteZ = Math.floor(blocoValido.z / D.LOTE);
-            var chaveLote = loteX + ':' + loteZ;
-            
-            console.log('Verificando lote:', chaveLote, 'Comprado:', !!estado.lotes[chaveLote]); // DEBUG
-            
-            if (estado.lotes[chaveLote]) {
-              // Posição válida - mostrar preview verde
-              modoConstrucao.preview.visible = true;
-              modoConstrucao.preview.position.set(snapped.x, 0.3, snapped.z);
-              
-              console.log('✅ Preview VERDE em:', snapped.x, 0.3, snapped.z); // DEBUG
-              
-              // Cor verde para válido
-              modoConstrucao.preview.traverse(function(obj) {
-                if (obj.isMesh && obj.material) {
-                  if (!obj.material.emissive) {
-                    obj.material.emissive = new THREE.Color(0x00ff00);
-                  } else {
-                    obj.material.emissive.setHex(0x00ff00);
-                  }
-                  obj.material.emissiveIntensity = 0.4;
-                  obj.material.opacity = 0.7;
-                }
-              });
-            } else {
-              // Posição inválida - mostrar preview vermelho
-              modoConstrucao.preview.visible = true;
-              modoConstrucao.preview.position.set(snapped.x, 0.3, snapped.z);
-              
-              console.log('❌ Preview VERMELHO (lote não comprado) em:', snapped.x, 0.3, snapped.z); // DEBUG
-              
-              // Cor vermelha para inválido
-              modoConstrucao.preview.traverse(function(obj) {
-                if (obj.isMesh && obj.material) {
-                  if (!obj.material.emissive) {
-                    obj.material.emissive = new THREE.Color(0xff0000);
-                  } else {
-                    obj.material.emissive.setHex(0xff0000);
-                  }
-                  obj.material.emissiveIntensity = 0.6;
-                  obj.material.opacity = 0.6;
-                }
-              });
-            }
-          } else {
-            // Fora do mapa ou bloqueado
-            console.log('⚠️ Fora do mapa ou bloqueado'); // DEBUG
-            modoConstrucao.preview.visible = false;
-          }
-        } else {
-          // Não intersectou o chão
-          console.log('⚠️ Não intersectou o chão'); // DEBUG
-          modoConstrucao.preview.visible = false;
-        }
-        return;
-      }
-      
+
       if (!arrastando) return;
       var dx = ev.clientX - ultimoX;
       var dy = ev.clientY - ultimoY;
@@ -2695,6 +3021,25 @@
     });
 
     global.addEventListener('pointerup', function (ev) {
+      var cliqueEsquerdo = ev.button === 0 || ev.pointerType !== 'mouse';
+
+      // === MODO CONSTRUÇÃO: soltar o item arrastado do inventário ===
+      if (modoConstrucao.ativo && modoConstrucao.preview && ponteiroDoArraste(ev)) {
+        soltarDestaqueRemocao();
+        fimDoArraste();
+        arrastando = false;
+        moveu = false;
+        // toque/clique no painel só seleciona: posicionar é o próximo
+        // toque no mapa (ou o fim de um arraste de verdade)
+        if (cliqueEsquerdo && !ponteiroSobreInventario(ev)) {
+          moverPreview(ev.clientX, ev.clientY);
+          confirmarColocacao();
+        } else {
+          atualizarControlesConstrucao();
+        }
+        return;
+      }
+
       if (livre.ligado) {
         // na camera livre o botao e so para olhar, nao para usar ferramenta
         livre.olhando = false;
@@ -2702,56 +3047,24 @@
         return;
       }
       
-      // === MODO CONSTRUCAO: SOLTAR ITEM ===
-      if (modoConstrucao.ativo && modoConstrucao.arrastando && ev.button === 0) {
-        finalizarArrastarItem();
+      // === MODO CONSTRUÇÃO: marreta ===
+      if (modoConstrucao.ativo && modoConstrucao.modoDeletar) {
         arrastando = false;
-        return;
-      }
-      
-      // === MODO DELETAR: CLICAR EM ITEM PARA DELETAR ===
-      if (modoConstrucao.ativo && modoConstrucao.modoDeletar && ev.button === 0 && !moveu) {
-        var r = palco.getBoundingClientRect();
-        mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
-        mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
-        ray.setFromCamera(mouse, camera);
-        
-        // Raycast nos itens posicionados
-        var itensParaDeletar = [];
-        modoConstrucao.itemsPosicionados.forEach(function(item) {
-          if (item.userData && item.userData.permanente) {
-            itensParaDeletar.push(item);
-          }
-        });
-        
-        if (itensParaDeletar.length > 0) {
-          var hits = ray.intersectObjects(itensParaDeletar, true);
-          if (hits.length > 0) {
-            // Encontrar o item pai (Group)
-            var objeto = hits[0].object;
-            while (objeto.parent && !objeto.userData.permanente) {
-              objeto = objeto.parent;
-            }
-            
-            if (objeto.userData && objeto.userData.permanente) {
-              console.log('Deletando item clicado:', objeto.userData.itemId); // DEBUG
-              deletarItemConstrucao(objeto);
-              arrastando = false;
-              return;
-            }
-          }
+        if (cliqueEsquerdo && !moveu) {
+          var alvo = objetoEm(ev.clientX, ev.clientY, modoConstrucao.construcoes);
+          while (alvo && alvo.parent && !alvo.userData.permanente) alvo = alvo.parent;
+          if (alvo && alvo.userData.permanente) deletarItemConstrucao(alvo);
+          else soltarDestaqueRemocao();
+        } else {
+          soltarDestaqueRemocao();
         }
-        
-        arrastando = false;
+        atualizarControlesConstrucao();
         return;
       }
-      
-      // === BLOQUEAR AÇÕES NORMAIS SE MODO CONSTRUÇÃO ESTIVER ATIVO ===
+
+      // === com o modo construção ligado o mapa não usa ferramenta ===
       if (modoConstrucao.ativo) {
-        // Mostrar mensagem apenas se clicou no mapa (não no inventário)
-        if (arrastando && !moveu) {
-          aviso('Use o inventário para colocar/deletar itens. Saia do modo construção para usar ferramentas.', true);
-        }
+        soltarDestaqueRemocao();
         arrastando = false;
         return;
       }
@@ -2760,21 +3073,15 @@
         // === MACHADO - CORTAR ARVORE ===
         if (estado.ferramenta === 'machado') {
           // Verificar se clicou em uma árvore
-          var r = palco.getBoundingClientRect();
-          mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
-          mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
-          ray.setFromCamera(mouse, camera);
-          
           var arvoresDecorativas = [];
-          grupoDecoracoes.children.forEach(function(obj) {
+          grupoDecoracoes.children.forEach(function (obj) {
             if (obj.userData && obj.userData.podeCortar) {
               arvoresDecorativas.push(obj);
             }
           });
-          
-          var hits = ray.intersectObjects(arvoresDecorativas, true);
-          if (hits.length > 0) {
-            var arvore = hits[0].object;
+
+          var arvore = objetoEm(ev.clientX, ev.clientY, arvoresDecorativas);
+          if (arvore) {
             // Encontrar o grupo pai da árvore
             while (arvore.parent && !arvore.userData.podeCortar) {
               arvore = arvore.parent;
@@ -2805,27 +3112,35 @@
       arrastando = false;
     });
 
+    // R não é tecla de movimento: ela gira a construção em 90 graus.
     function teclasDeMovimento(k) {
       return k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q'
-        || k === ' ' || k === 'shift' || k === 'r';
+        || k === ' ' || k === 'shift';
     }
 
     function nomearTecla(k) {
-      if (k === 'r') return ' ';
       if (k === ' ') return ' ';
       return k;
     }
 
     global.addEventListener('keydown', function (ev) {
       var emCampo = ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName || '');
-      
+      var k = ev.key.toLowerCase();
+
+      // R gira o item antes de soltar
+      if (!emCampo && k === 'r' && modoConstrucao.ativo && modoConstrucao.preview) {
+        ev.preventDefault();
+        girarPreview();
+        return;
+      }
+
       // ESC cancela arraste se estiver arrastando
       if (ev.key === 'Escape') {
-        if (modoConstrucao.arrastando) {
+        if (modoConstrucao.preview) {
           cancelarArrasteItem();
           return;
         }
-        
+
         var modal = ui('loja');
         if (modal && !modal.hidden) {
           modal.hidden = true;
@@ -2842,28 +3157,34 @@
           return;
         }
       }
-      
+
       if (ev.key === 'h' || ev.key === 'H') {
         if (emCampo) return;
         ev.preventDefault();
         alternarLivre();
         return;
       }
-      
+
       if (emCampo) return;
-      var k = ev.key.toLowerCase();
       if (teclasDeMovimento(k)) {
         livre.teclas[nomearTecla(k)] = true;
         ev.preventDefault();
       }
     });
-    
-    // Botão direito do mouse cancela arraste
-    palco.addEventListener('contextmenu', function(ev) {
-      if (modoConstrucao.arrastando) {
+
+    // Botão direito cancela o arraste (funciona em qualquer lugar da tela,
+    // inclusive sobre o painel de construções)
+    document.addEventListener('contextmenu', function (ev) {
+      if (modoConstrucao.ativo && modoConstrucao.preview) {
         ev.preventDefault();
         cancelarArrasteItem();
       }
+    });
+
+    // No toque, o navegador pode cancelar o ponteiro no meio do arraste
+    // (chamada, notificação, gesto do sistema): trata como cancelamento
+    global.addEventListener('pointercancel', function () {
+      if (modoConstrucao.ativo && modoConstrucao.preview) cancelarArrasteItem(true);
     });
 
     global.addEventListener('keyup', function (ev) {
@@ -2922,18 +3243,34 @@
       });
     }
     
-    // Event listener para fechar modo construção
+    // Fechar o modo construção
     var fecharConstrucao = ui('fechar-construcao');
     if (fecharConstrucao) {
-      fecharConstrucao.addEventListener('click', function() {
+      fecharConstrucao.addEventListener('click', function () {
         desativarModoConstrucao();
+      });
+    }
+
+    // Controles do modo construção (essenciais no toque, onde não existe
+    // botão direito nem tecla R)
+    var girar = ui('girar-construcao');
+    if (girar) {
+      girar.addEventListener('click', function () {
+        girarPreview();
+      });
+    }
+    var cancelar = ui('cancelar-construcao');
+    if (cancelar) {
+      cancelar.addEventListener('click', function () {
+        if (modoConstrucao.modoDeletar) desativarModoDeletar();
+        else cancelarArrasteItem();
       });
     }
 
     var reiniciar = ui('reiniciar');
     if (reiniciar) {
       reiniciar.addEventListener('click', function () {
-        if (!global.confirm('Recomecar apaga o progresso salvo. Continuar?')) return;
+        if (!global.confirm('Recomecar apaga o progresso salvo, incluindo as construções. Continuar?')) return;
         C.apagar();
         global.location.reload();
       });
@@ -2945,7 +3282,7 @@
 
   function erroFatal(erro) {
     console.error('Raiz jogo: falha ao iniciar.', erro);
-    var painel = document.querySelector('.painel');
+    var painel = document.querySelector('.hud-centro');
     if (painel) {
       painel.innerHTML = '';
       var h = document.createElement('h2');
@@ -2970,8 +3307,15 @@
   function iniciar() {
     try {
       estado = C.iniciar();
+      // save antigo (sem o campo) ganha a lista vazia em vez de ser descartado
+      C.normalizarConstrucoes(estado);
+      if (estado.ferramenta === 'construcao') estado.ferramenta = 'plantar';
+
       montarCena();
       atualizarCena();
+      // reconstrói as construções salvas ANTES de ligar as interações:
+      // é aqui que o item colocado volta a existir depois do F5
+      reconstruirConstrucoes();
       montarFerramentas();
       montarSementes();
       ligarInteracoes();
@@ -2985,7 +3329,8 @@
     }
 
     global.RaizJogoView = {
-      estado: function () { return estado; }
+      estado: function () { return estado; },
+      construcoes: function () { return estado.construcoes; }
     };
   }
 

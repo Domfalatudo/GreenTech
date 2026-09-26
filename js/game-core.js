@@ -44,7 +44,11 @@
       dias: 1,
       estacao: 'manha',
       historico: [],
-      estatisticas: { colhidas: 0, plantadas: 0, lotes: 1,BEST: 0 }
+      // Registro das construções do modo construção: uma entrada por item
+      // exposto no terreno. Guardar só o item aqui (e não mais nada) é o que
+      // fazia as construções sumirem ao recarregar a página.
+      construcoes: [],
+      estatisticas: { colhidas: 0, plantadas: 0, lotes: 1 }
     };
     aplicarEstadoLote(estado, centro, centro, 'mato');
     return estado;
@@ -171,6 +175,96 @@
 
   function temItem(estado, id) { return (estado.itens[id] || 0) > 0; }
 
+  // ===== MODO CONSTRUÇÃO =====
+  // MODELO DE ECONOMIA (documentado aqui e em game-view.js):
+  // `estado.itens` é o contador de PROPRIEDADE. Ele alimenta producaoEnergia(),
+  // indiceDePegada() e usarEquipamento(), ou seja, é o que define o efeito de
+  // jogo do equipamento. Expor o item no terreno NÃO consome a unidade: cada
+  // unidade comprada pode ter no máximo uma cópia construida, controlada por
+  // `estado.construcoes`. Se colocar no mapa decrementasse `estado.itens`, a
+  // máquina deixaria de gerar energia, de contar na pegada e de ser usada só
+  // porque virou decoração.
+  // Disponível para construir = estado.itens[id] - construções com esse id.
+
+  function chaveConstrucao(c) { return c.blocoX + ':' + c.blocoZ; }
+
+  function construcoesNoBloco(estado, blocoX, blocoZ) {
+    if (!estado.construcoes) return [];
+    return estado.construcoes.filter(function (c) {
+      return c.blocoX === blocoX && c.blocoZ === blocoZ;
+    });
+  }
+
+  function construcaoNoBloco(estado, bloco) {
+    if (!bloco) return null;
+    var achadas = construcoesNoBloco(estado, bloco.x, bloco.z);
+    return achadas.length ? achadas[0] : null;
+  }
+
+  function construcoesNoLote(estado, blocoX, blocoZ) {
+    if (!estado.construcoes) return [];
+    var lx = Math.floor(blocoX / D.LOTE);
+    var lz = Math.floor(blocoZ / D.LOTE);
+    return estado.construcoes.filter(function (c) {
+      return Math.floor(c.blocoX / D.LOTE) === lx && Math.floor(c.blocoZ / D.LOTE) === lz;
+    });
+  }
+
+  function contarConstrucoes(estado, itemId) {
+    if (!estado.construcoes) return 0;
+    return estado.construcoes.filter(function (c) { return c.itemId === itemId; }).length;
+  }
+
+  function construcoesDoItem(estado, itemId) {
+    return Math.max(0, (estado.itens[itemId] || 0) - contarConstrucoes(estado, itemId));
+  }
+
+  // Regra única de ocupação de bloco, usada pelo preview (vermelho) e pela
+  // hora de soltar: um bloco livre recebe UMA construção e nunca em cima de
+  // cultivo ou de estrutura já existente.
+  function conferirConstrucao(estado, bloco) {
+    if (!bloco) return { ok: false, msg: 'Fora do terreno.' };
+    if (bloco.bloqueado) return { ok: false, msg: 'Esse terreno ainda nao e seu.' };
+    if (construcaoNoBloco(estado, bloco)) {
+      return { ok: false, msg: 'Ja tem uma construcao nesse bloco.' };
+    }
+    if (bloco.cultivo) return { ok: false, msg: 'Ha cultivo nesse bloco. Colha antes de construir.' };
+    if (bloco.estrutura) return { ok: false, msg: 'Ja existe uma estrutura nesse bloco.' };
+    var limite = D.CONSTRUCOES && D.CONSTRUCOES.limitePorLote;
+    if (limite && construcoesNoLote(estado, bloco.x, bloco.z).length >= limite) {
+      return { ok: false, msg: 'Esse lote ja tem ' + limite + ' construcoes. Use outro lote.' };
+    }
+    return { ok: true, msg: '' };
+  }
+
+  // Higiene do save: descarta entradas invalidas (item desconhecido, fora da
+  // grade, terreno nao comprado, bloco ocupado ou construcao duplicada).
+  // Como a unidade nunca foi debitada de `estado.itens`, descartar uma
+  // entrada nao perde equipamento nenhum: so devolve a unidade ao disponivel.
+  function normalizarConstrucoes(estado) {
+    var lista = Array.isArray(estado.construcoes) ? estado.construcoes : [];
+    var vistos = {};
+    var limpas = [];
+    lista.forEach(function (c) {
+      if (!c || typeof c !== 'object') return;
+      if (!D.CONSTRUCOES || !D.CONSTRUCOES.itens[c.itemId]) return;
+      var bx = Math.floor(c.blocoX);
+      var bz = Math.floor(c.blocoZ);
+      if (!isFinite(bx) || !isFinite(bz)) return;
+      if (bx < 0 || bz < 0 || bx >= D.GRADE || bz >= D.GRADE) return;
+      var bloco = estado.blocos[bz * D.GRADE + bx];
+      if (!bloco || bloco.bloqueado) return;
+      if (bloco.cultivo || bloco.estrutura) return;
+      var chave = bx + ':' + bz;
+      if (vistos[chave]) return;
+      vistos[chave] = true;
+      var giro = Math.floor(c.rotacao) || 0;
+      limpas.push({ itemId: c.itemId, blocoX: bx, blocoZ: bz, rotacao: ((giro % 4) + 4) % 4 });
+    });
+    estado.construcoes = limpas;
+    return limpas;
+  }
+
   function aplicarEfeitoDeEstrutura(estado, estrutura, bloco) {
     var modelo = D.EQUIPAMENTOS[estrutura];
     if (!modelo) return;
@@ -184,6 +278,9 @@
   var AÇÕES = {
     plantar: function (estado, bloco) {
       if (bloco.bloqueado) return { ok: false, msg: 'Esse lote ainda nao e seu.' };
+      if (construcaoNoBloco(estado, bloco)) {
+        return { ok: false, msg: 'Ha uma construcao aqui. Remova antes de plantar.' };
+      }
       if (bloco.cultivo) return { ok: false, msg: 'Ja tem algo plantado aqui.' };
       if (bloco.fertilidade < 0.15) return { ok: false, msg: 'Solo pobre demais. Adube antes.' };
       var cultura = D.CULTURAS[estado.semente];
@@ -309,6 +406,9 @@
 
     if (modelo.refloresta) {
       if (bloco.estrutura) return { ok: false, msg: 'Ja existe algo aqui.' };
+      if (construcaoNoBloco(estado, bloco)) {
+        return { ok: false, msg: 'Ha uma construcao nesse bloco. Remova antes de plantar.' };
+      }
       bloco.estrutura = 'arvore';
       bloco.nativo = true;
       bloco.poluicao = Math.max(0, bloco.poluicao - 0.15);
@@ -516,6 +616,9 @@
     'agua', 'aguaMax', 'graos', 'itens', 'ferramenta', 'semente', 'relogio',
     'clima', 'dias', 'estatisticas'
   ];
+  // `construcoes` NÃO entra na lista de obrigatórios: assim um save anterior
+  // ao modo construção continua carregando e ganha o campo vazio em vez de
+  // jogar a fazenda inteira fora.
 
   function carregar() {
     try {
@@ -539,6 +642,7 @@
           return null;
         }
       }
+      normalizarConstrucoes(dados);
       return dados;
     } catch (erro) {
       console.warn('Raiz: nao consegui ler o save.', erro);
@@ -575,6 +679,15 @@
     lotesTodos: lotesTodos,
     lotesVizinhos: lotesVizinhos,
     chaveLote: chaveLote,
-    temItem: temItem
+    temItem: temItem,
+    // modo construção
+    conferirConstrucao: conferirConstrucao,
+    construcaoNoBloco: construcaoNoBloco,
+    construcoesNoBloco: construcoesNoBloco,
+    construcoesNoLote: construcoesNoLote,
+    contarConstrucoes: contarConstrucoes,
+    construcoesDoItem: construcoesDoItem,
+    chaveConstrucao: chaveConstrucao,
+    normalizarConstrucoes: normalizarConstrucoes
   };
 })(window);

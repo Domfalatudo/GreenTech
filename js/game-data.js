@@ -55,6 +55,32 @@ window.RaizJogo = (function () {
 
   var SEMENTES_INICIAIS = { milho: 6, soja: 6, trigo: 6 };
 
+  // === MODO CONSTRUÇÃO (exposição dos equipamentos no terreno) ===
+  // Lista fechada do que pode ser posicionado no mapa, com o tamanho real
+  // de cada modelo: é o que alimenta a colisão do personagem em game-view.js.
+  //   raio   -> raio de colisão em blocos (TILE = 1)
+  //   altura -> altura do modelo, usada no teste de colisão vertical
+  var CONSTRUCOES = {
+    // Limite de construções por lote. null = sem limite artificial:
+    // a regra real é "um bloco livre recebe no máximo uma construção",
+    // ou seja, até LOTE * LOTE (9) construções num lote de 3x3.
+    limitePorLote: null,
+    itens: {
+      trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.36, altura: 0.55 },
+      tratorEletrico: { nome: 'Trator Elétrico', emoji: '⚡', raio: 0.36, altura: 0.55 },
+      drone: { nome: 'Drone', emoji: '🚁', raio: 0.32, altura: 0.5 },
+      colheitadeira: { nome: 'Colheitadeira', emoji: '🌾', raio: 0.38, altura: 0.6 },
+      gotejamento: { nome: 'Irrigação', emoji: '💧', raio: 0.34, altura: 0.3 },
+      composteira: { nome: 'Composteira', emoji: '♻️', raio: 0.3, altura: 0.4 },
+      arvore: { nome: 'Reflorestamento', emoji: '🌳', raio: 0.28, altura: 0.95 },
+      painel: { nome: 'Painel Solar', emoji: '☀️', raio: 0.3, altura: 0.35 },
+      turbina: { nome: 'Turbina Eólica', emoji: '💨', raio: 0.26, altura: 1.0 },
+      bateria: { nome: 'Bateria', emoji: '🔋', raio: 0.25, altura: 0.3 },
+      poste: { nome: 'Poste de Luz', emoji: '💡', raio: 0.2, altura: 1.2 },
+      caixa: { nome: 'Caixa d’água', emoji: '🚰', raio: 0.3, altura: 0.35 }
+    }
+  };
+
   return {
     GRADE: GRADE,
     LOTE: LOTE,
@@ -68,6 +94,7 @@ window.RaizJogo = (function () {
     PESOS_CLIMA: PESOS_CLIMA,
     XP_POR_NIVEL: XP_POR_NIVEL,
     SEMENTES_INICIAIS: SEMENTES_INICIAIS,
+    CONSTRUCOES: CONSTRUCOES,
     CHAVE_SAVE: 'raiz-jogo-v1'
   };
 })();
