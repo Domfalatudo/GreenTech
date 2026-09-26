@@ -40,11 +40,16 @@
   }
 
 
+  var inPagesDir = window.location.pathname.indexOf('/pages/') !== -1;
+  function pageLink(file) {
+    return inPagesDir ? file : 'pages/' + file;
+  }
+
   function estadoDeslogado(container) {
     container.textContent = '';
     container.appendChild(el('div', { classe: 'account-out' }, [
-      el('a', { classe: 'account-link account-link-signup', href: 'cadastro.html', texto: 'Criar conta' }),
-      el('a', { classe: 'account-link account-link-login', href: 'login.html', texto: 'Entrar' })
+      el('a', { classe: 'account-link account-link-signup', href: pageLink('cadastro.html'), texto: 'Criar conta' }),
+      el('a', { classe: 'account-link account-link-login', href: pageLink('login.html'), texto: 'Entrar' })
     ]));
   }
 
@@ -78,13 +83,13 @@
       ]),
       el('a', {
         classe: 'account-menu-item',
-        href: 'perfil.html',
+        href: pageLink('perfil.html'),
         role: 'menuitem',
         texto: 'Meu perfil'
       }),
       el('a', {
         classe: 'account-menu-item',
-        href: 'conteudo-1.html',
+        href: pageLink('conteudo-1.html'),
         role: 'menuitem',
         texto: 'Ir para o conteudo'
       }),
