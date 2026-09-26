@@ -28,7 +28,8 @@
     { id: 'despoluir', nome: 'Despoluir', tipo: 'acao', cor: '#a4402f' },
     { id: 'enxada', nome: 'Enxada', tipo: 'item', cor: '#9c8b6e' },
     { id: 'regador', nome: 'Regador', tipo: 'item', cor: '#3f7a8f' },
-    { id: 'arvore', nome: 'Reflorestar', tipo: 'item', cor: '#2f6b3a' }
+    { id: 'machado', nome: 'Machado', tipo: 'item', cor: '#8b4513' },
+    { id: 'construcao', nome: 'Modo Construção', tipo: 'modo', cor: '#ff6b35' }
   ];
 
   var estado = null;
@@ -36,19 +37,634 @@
   var abaAtual = 'equipamentos';
   var loteEmEscolha = null;
 
-  var cena, camera, renderer, tabuleiro, grupoBlocos, grupoEstruturas;
+  var cena, camera, renderer, tabuleiro, grupoBlocos, grupoEstruturas, grupoDecoracoes;
   var malhasBloco = [];
   var malhaSelecao = null;
   var malhaFazendeiro = null;
+  var fazPartes = {}; // pernas, bracos, ferramenta
   var luzes = {};
   var chuva = null;
   var relogioAnterior = 0;
   var ultimoAviso = 0;
   var houveEstruturaNoturna = false;
+  var tempoAndar = 0;
+  var andando = false;
+
+  // === FISICA DO PERSONAGEM ===
+  var fisica = {
+    velocidade: new THREE.Vector3(),
+    aceleracao: 0.15,
+    friccao: 0.85,
+    velocidadeMaxima: 0.12,
+    gravidade: -0.02,
+    velocidadeY: 0,
+    noChao: true,
+    forcaPulo: 0.18,
+    altura: 0.8,
+    raio: 0.3
+  };
+  
+  var teclasPressionadas = {};
+  var obstaculos = []; // Lista de objetos com colisão
+  
+  // === MODO CONSTRUCAO ===
+  var modoConstrucao = {
+    ativo: false,
+    itemSelecionado: null,
+    preview: null,
+    itemsPosicionados: [], // Items colocados no mapa
+    animacoes: [], // Animações ativas
+    inventario: {}, // Itens disponíveis {itemId: quantidade}
+    arrastando: false, // Flag para controlar drag & drop
+    mouseDownPos: null, // Posição inicial do mouse
+    modoDeletar: false // Flag para modo deletar
+  };
+  
+  // Função para ativar modo construção
+  function ativarModoConstrucao() {
+    modoConstrucao.ativo = true;
+    
+    // Adicionar classe no body para desabilitar seleção
+    document.body.classList.add('modo-construcao');
+    
+    // Esconder personagem
+    if (malhaFazendeiro) {
+      malhaFazendeiro.visible = false;
+    }
+    
+    // Esconder seleção de bloco
+    if (malhaSelecao) {
+      malhaSelecao.visible = false;
+    }
+    
+    // Mostrar grade de construção
+    if (!modoConstrucao.grade) {
+      criarGradeConstrucao();
+    }
+    modoConstrucao.grade.visible = true;
+    
+    // Mostrar inventário
+    var inv = ui('inventario-construcao');
+    if (inv) {
+      inv.classList.add('ativo');
+      atualizarInventarioConstrucao();
+    }
+    
+    // Esconder painel de ferramentas
+    var painel = document.querySelector('.painel');
+    if (painel) painel.style.display = 'none';
+    
+    // Esconder inspetor
+    var inspetor = ui('inspetor');
+    if (inspetor) inspetor.hidden = true;
+    
+    aviso('Modo Construção ativado! Pressione H para câmera livre', false);
+  }
+  
+  // Função para desativar modo construção
+  function desativarModoConstrucao() {
+    modoConstrucao.ativo = false;
+    modoConstrucao.itemSelecionado = null;
+    
+    // Desativar modo deletar se estiver ativo
+    if (modoConstrucao.modoDeletar) {
+      desativarModoDeletar();
+    }
+    
+    // Remover classe do body
+    document.body.classList.remove('modo-construcao');
+    
+    // Remover preview se existir
+    if (modoConstrucao.preview) {
+      grupoEstruturas.remove(modoConstrucao.preview);
+      modoConstrucao.preview = null;
+    }
+    
+    // Esconder grade
+    if (modoConstrucao.grade) {
+      modoConstrucao.grade.visible = false;
+    }
+    
+    // Mostrar personagem
+    if (malhaFazendeiro) {
+      malhaFazendeiro.visible = true;
+    }
+    
+    // Esconder inventário
+    var inv = ui('inventario-construcao');
+    if (inv) inv.classList.remove('ativo');
+    
+    // Mostrar painel de ferramentas
+    var painel = document.querySelector('.painel');
+    if (painel) painel.style.display = '';
+    
+    // Voltar ferramenta para plantar
+    if (estado) {
+      estado.ferramenta = 'plantar';
+      marcarFerramenta();
+      atualizarFerramentaMao();
+    }
+    
+    aviso('Modo Construção desativado', false);
+  }
+  
+  // Criar grade de construção
+  function criarGradeConstrucao() {
+    var gradeGroup = new THREE.Group();
+    
+    // Material das linhas da grade (branco)
+    var materialLinha = new THREE.LineBasicMaterial({ 
+      color: 0xffffff, 
+      transparent: true, 
+      opacity: 0.7,
+      depthWrite: false
+    });
+    
+    // Material das linhas dos lotes (azul mais forte)
+    var materialLote = new THREE.LineBasicMaterial({ 
+      color: 0x4af0ff, 
+      transparent: true, 
+      opacity: 0.9,
+      depthWrite: false
+    });
+    
+    // Altura da grade (acima dos blocos)
+    var alturaGrade = 0.2;
+    
+    // Calcular limites da grade baseado no sistema de coordenadas
+    // A grade deve ter linhas nas BORDAS dos blocos, não nos centros
+    var limiteMin = -meio - TILE/2;
+    var limiteMax = meio + TILE/2;
+    
+    // Criar linhas verticais (bordas dos blocos no eixo X)
+    for (var x = 0; x <= D.GRADE; x++) {
+      // Posição da linha: início da grade + x blocos
+      var xReal = limiteMin + x * STEP;
+      var ehLinhaDeLote = (x % D.LOTE === 0);
+      var material = ehLinhaDeLote ? materialLote : materialLinha;
+      
+      var pontos = [];
+      pontos.push(new THREE.Vector3(xReal, alturaGrade, limiteMin));
+      pontos.push(new THREE.Vector3(xReal, alturaGrade, limiteMax));
+      
+      var geometria = new THREE.BufferGeometry().setFromPoints(pontos);
+      var linha = new THREE.Line(geometria, material);
+      gradeGroup.add(linha);
+    }
+    
+    // Criar linhas horizontais (bordas dos blocos no eixo Z)
+    for (var z = 0; z <= D.GRADE; z++) {
+      var zReal = limiteMin + z * STEP;
+      var ehLinhaDeLote = (z % D.LOTE === 0);
+      var material = ehLinhaDeLote ? materialLote : materialLinha;
+      
+      var pontos = [];
+      pontos.push(new THREE.Vector3(limiteMin, alturaGrade, zReal));
+      pontos.push(new THREE.Vector3(limiteMax, alturaGrade, zReal));
+      
+      var geometria = new THREE.BufferGeometry().setFromPoints(pontos);
+      var linha = new THREE.Line(geometria, material);
+      gradeGroup.add(linha);
+    }
+    
+    // Adicionar plano verde APENAS em blocos liberados
+    estado.blocos.forEach(function(b) {
+      var p = posicaoDe(b);
+      
+      // Verificar se o bloco está em lote comprado
+      var loteX = Math.floor(b.x / D.LOTE);
+      var loteZ = Math.floor(b.z / D.LOTE);
+      var chaveLote = loteX + ':' + loteZ;
+      
+      if (estado.lotes[chaveLote] && !b.bloqueado) {
+        // Plano verde semi-transparente
+        var plano = new THREE.Mesh(
+          new THREE.PlaneGeometry(TILE, TILE),
+          new THREE.MeshBasicMaterial({ 
+            color: 0x6fbf7a, 
+            transparent: true, 
+            opacity: 0.25,
+            side: THREE.DoubleSide,
+            depthWrite: false
+          })
+        );
+        plano.rotation.x = -Math.PI / 2;
+        plano.position.set(p[0], alturaGrade + 0.01, p[2]);
+        gradeGroup.add(plano);
+      }
+    });
+    
+    tabuleiro.add(gradeGroup);
+    modoConstrucao.grade = gradeGroup;
+    gradeGroup.visible = false;
+  }
+  
+  // Função para snap to grid (encaixar na grade)
+  function snapToGrid(x, z) {
+    // O sistema de coordenadas do jogo:
+    // - Centro é 0,0
+    // - Blocos vão de -meio a +meio
+    // - Cada bloco tem tamanho STEP
+    
+    // Converter coordenada mundial para índice de bloco
+    var blocoX = Math.round((x + meio) / STEP);
+    var blocoZ = Math.round((z + meio) / STEP);
+    
+    // Limitar aos limites da grade
+    blocoX = Math.max(0, Math.min(D.GRADE - 1, blocoX));
+    blocoZ = Math.max(0, Math.min(D.GRADE - 1, blocoZ));
+    
+    // Converter de volta para coordenada mundial (centro do bloco)
+    var gridX = blocoX * STEP - meio;
+    var gridZ = blocoZ * STEP - meio;
+    
+    console.log('snapToGrid: mundo(', x.toFixed(2), z.toFixed(2), ') -> bloco[', blocoX, blocoZ, '] -> mundo(', gridX.toFixed(2), gridZ.toFixed(2), ')'); // DEBUG
+    
+    return { x: gridX, z: gridZ, blocoX: blocoX, blocoZ: blocoZ };
+  }
+  
+  // Função para atualizar inventário
+  function atualizarInventarioConstrucao() {
+    var container = ui('itens-inventario');
+    if (!container || !estado) return;
+    
+    container.innerHTML = '';
+    
+    console.log('Estado itens:', estado.itens); // DEBUG
+    
+    // BOTÃO DE MARRETA (sempre no topo)
+    var divMarreta = document.createElement('div');
+    divMarreta.className = 'item-construcao item-marreta';
+    divMarreta.dataset.itemId = 'marreta';
+    if (modoConstrucao.modoDeletar) divMarreta.classList.add('selecionado');
+    
+    divMarreta.innerHTML = 
+      '<div class="icon" style="font-size: 1.8rem;">🔨</div>' +
+      '<div class="info">' +
+        '<div class="nome">Marreta</div>' +
+        '<div class="quantidade">Deletar itens</div>' +
+      '</div>';
+    
+    divMarreta.addEventListener('click', function() {
+      ativarModoDeletar();
+    });
+    
+    container.appendChild(divMarreta);
+    
+    // Separador visual
+    var separador = document.createElement('div');
+    separador.style.cssText = 'height: 1px; background: var(--pale); margin: 8px 0;';
+    container.appendChild(separador);
+    
+    // Mapear itens da loja para o inventário (sem enxada e regador que são básicos)
+    var itensDisponiveis = [
+      { id: 'trator', nome: 'Trator Antigo', emoji: '🚜' },
+      { id: 'tratorEletrico', nome: 'Trator Elétrico', emoji: '⚡' },
+      { id: 'drone', nome: 'Drone', emoji: '🚁' },
+      { id: 'colheitadeira', nome: 'Colheitadeira', emoji: '🌾' },
+      { id: 'gotejamento', nome: 'Irrigação', emoji: '💧' },
+      { id: 'composteira', nome: 'Composteira', emoji: '♻️' },
+      { id: 'arvore', nome: 'Reflorestamento', emoji: '🌳' }
+    ];
+    
+    itensDisponiveis.forEach(function(item) {
+      var quantidade = estado.itens[item.id] || 0;
+      
+      console.log('Item:', item.id, 'Quantidade:', quantidade); // DEBUG
+      
+      var div = document.createElement('div');
+      div.className = 'item-construcao';
+      div.dataset.itemId = item.id;
+      if (quantidade === 0) div.classList.add('sem-item');
+      
+      div.innerHTML = 
+        '<div class="icon">' + item.emoji + '</div>' +
+        '<div class="info">' +
+          '<div class="nome">' + item.nome + '</div>' +
+          '<div class="quantidade">' + 
+            (quantidade > 0 ? 'Disponível: ' + quantidade : 'Nenhum disponível') +
+          '</div>' +
+        '</div>' +
+        (quantidade > 0 ? '<div class="badge">' + quantidade + '</div>' : '');
+      
+      if (quantidade > 0) {
+        // Usar mousedown/mouseup para drag & drop
+        div.addEventListener('mousedown', function(e) {
+          e.preventDefault();
+          iniciarArrastarItem(item.id, e);
+        });
+      }
+      
+      container.appendChild(div);
+    });
+  }
+  
+  // Ativar modo deletar
+  function ativarModoDeletar() {
+    // Se já estava no modo deletar, desativar
+    if (modoConstrucao.modoDeletar) {
+      desativarModoDeletar();
+      return;
+    }
+    
+    console.log('Ativando modo deletar'); // DEBUG
+    
+    // Cancelar arraste se estiver arrastando
+    if (modoConstrucao.arrastando) {
+      cancelarArrasteItem();
+    }
+    
+    modoConstrucao.modoDeletar = true;
+    modoConstrucao.itemSelecionado = 'marreta';
+    
+    // Adicionar classe no body para mudar cursor
+    document.body.classList.add('modo-deletar');
+    
+    // Atualizar visual do inventário
+    destacarItemSelecionado('marreta');
+    
+    aviso('Modo deletar ativado! Clique nos itens para remover', false);
+  }
+  
+  // Desativar modo deletar
+  function desativarModoDeletar() {
+    console.log('Desativando modo deletar'); // DEBUG
+    
+    modoConstrucao.modoDeletar = false;
+    modoConstrucao.itemSelecionado = null;
+    
+    // Remover classe do body
+    document.body.classList.remove('modo-deletar');
+    
+    // Remover destaque
+    var itens = document.querySelectorAll('.item-construcao');
+    itens.forEach(function(el) { 
+      el.classList.remove('selecionado');
+    });
+    
+    aviso('Modo deletar desativado', false);
+  }
+  
+  // Deletar item clicado
+  function deletarItemConstrucao(item) {
+    if (!item || !item.userData || !item.userData.permanente) return false;
+    
+    var itemId = item.userData.itemId;
+    
+    console.log('Deletando item:', itemId); // DEBUG
+    
+    // Remover da cena
+    grupoEstruturas.remove(item);
+    
+    // Remover da lista de itens posicionados
+    var idx = modoConstrucao.itemsPosicionados.indexOf(item);
+    if (idx >= 0) {
+      modoConstrucao.itemsPosicionados.splice(idx, 1);
+    }
+    
+    // Devolver ao inventário
+    estado.itens[itemId] = (estado.itens[itemId] || 0) + 1;
+    
+    // Atualizar UI
+    atualizarInventarioConstrucao();
+    atualizarUI();
+    C.salvar(estado);
+    
+    aviso('Item removido e devolvido ao inventário', false);
+    
+    return true;
+  }
+  
+  // Iniciar arraste do item
+  function iniciarArrastarItem(itemId, evento) {
+    if (!modoConstrucao.ativo) {
+      console.log('Modo construção não está ativo'); // DEBUG
+      return;
+    }
+    
+    // Se estiver no modo deletar, desativar antes de arrastar
+    if (modoConstrucao.modoDeletar) {
+      desativarModoDeletar();
+    }
+    
+    var quantidade = estado.itens[itemId] || 0;
+    if (quantidade === 0) {
+      aviso('Você não possui este item', true);
+      return;
+    }
+    
+    console.log('===== INICIANDO ARRASTE ====='); // DEBUG
+    console.log('Item:', itemId, 'Quantidade:', quantidade); // DEBUG
+    
+    modoConstrucao.itemSelecionado = itemId;
+    modoConstrucao.arrastando = true;
+    modoConstrucao.mouseDownPos = { x: evento.clientX, y: evento.clientY };
+    
+    console.log('modoConstrucao.arrastando =', modoConstrucao.arrastando); // DEBUG
+    
+    // Adicionar classe no body para mudar cursor
+    document.body.classList.add('arrastando-item');
+    
+    // Remover preview anterior se existir
+    if (modoConstrucao.preview) {
+      console.log('Removendo preview anterior'); // DEBUG
+      grupoEstruturas.remove(modoConstrucao.preview);
+      modoConstrucao.preview = null;
+    }
+    
+    // Criar preview imediatamente
+    try {
+      console.log('Chamando criarPreviewItem...'); // DEBUG
+      modoConstrucao.preview = criarPreviewItem(itemId);
+      
+      if (!modoConstrucao.preview) {
+        throw new Error('criarPreviewItem retornou null para ' + itemId);
+      }
+      
+      console.log('Preview criado com sucesso!'); // DEBUG
+      console.log('Preview object:', modoConstrucao.preview); // DEBUG
+      
+      modoConstrucao.preview.position.set(0, 0, 0);
+      modoConstrucao.preview.visible = true; // COMEÇAR VISÍVEL para debug
+      grupoEstruturas.add(modoConstrucao.preview);
+      
+      console.log('Preview adicionado ao grupoEstruturas'); // DEBUG
+      console.log('grupoEstruturas.children.length:', grupoEstruturas.children.length); // DEBUG
+      
+      // Destacar item selecionado e adicionar classe de arrastando
+      destacarItemSelecionado(itemId);
+      var itemEl = document.querySelector('.item-construcao[data-item-id="' + itemId + '"]');
+      if (itemEl) {
+        itemEl.classList.add('arrastando');
+        console.log('Classe arrastando adicionada ao elemento'); // DEBUG
+      }
+      
+      aviso('Arraste o item e solte no terreno verde', false);
+      
+      console.log('===== ARRASTE INICIADO COM SUCESSO ====='); // DEBUG
+    } catch (erro) {
+      console.error('ERRO ao criar preview:', erro);
+      console.error('Stack:', erro.stack);
+      aviso('Erro ao criar preview: ' + erro.message, true);
+      modoConstrucao.itemSelecionado = null;
+      modoConstrucao.arrastando = false;
+      document.body.classList.remove('arrastando-item');
+      return;
+    }
+  }
+  
+  // Finalizar arraste (soltar item)
+  function finalizarArrastarItem() {
+    if (!modoConstrucao.arrastando || !modoConstrucao.preview) {
+      modoConstrucao.arrastando = false;
+      document.body.classList.remove('arrastando-item');
+      return;
+    }
+    
+    console.log('Finalizando arraste'); // DEBUG
+    
+    var itemId = modoConstrucao.itemSelecionado;
+    
+    // Verificar se tem item disponível
+    if (!estado.itens[itemId] || estado.itens[itemId] <= 0) {
+      aviso('Você não tem este item!', true);
+      cancelarArrasteItem();
+      return;
+    }
+    
+    // Pegar posição do preview
+    var pos = modoConstrucao.preview.position.clone();
+    
+    // Verificar se está visível (ou seja, estava sobre o mapa)
+    if (!modoConstrucao.preview.visible) {
+      aviso('Posicione o item sobre o terreno', true);
+      cancelarArrasteItem();
+      return;
+    }
+    
+    // Converter posição do mundo para índices de bloco
+    var snapped = snapToGrid(pos.x, pos.z);
+    var blocoNaPosicao = C.blocoEm(estado, snapped.blocoX, snapped.blocoZ);
+    
+    console.log('Tentando colocar item no bloco:', snapped.blocoX, snapped.blocoZ, blocoNaPosicao); // DEBUG
+    
+    if (!blocoNaPosicao) {
+      aviso('Posição inválida!', true);
+      cancelarArrasteItem();
+      return;
+    }
+    
+    // Verificar se o bloco está em um lote comprado
+    var loteX = Math.floor(blocoNaPosicao.x / D.LOTE);
+    var loteZ = Math.floor(blocoNaPosicao.z / D.LOTE);
+    var chaveLote = loteX + ':' + loteZ;
+    
+    if (!estado.lotes[chaveLote]) {
+      aviso('Você só pode colocar itens em lotes comprados! Compre na loja > Terreno', true);
+      cancelarArrasteItem();
+      return;
+    }
+    
+    if (blocoNaPosicao.bloqueado) {
+      aviso('Este bloco está bloqueado (mata nativa)!', true);
+      cancelarArrasteItem();
+      return;
+    }
+    
+    // Criar item real na posição correta
+    var item = criarModeloItem(itemId);
+    var posBloco = posicaoDe(blocoNaPosicao);
+    item.position.set(posBloco[0], 0, posBloco[2]);
+    item.userData.permanente = true;
+    item.userData.blocoX = blocoNaPosicao.x;
+    item.userData.blocoZ = blocoNaPosicao.z;
+    grupoEstruturas.add(item);
+    modoConstrucao.itemsPosicionados.push(item);
+    
+    // Decrementar quantidade
+    estado.itens[itemId]--;
+    
+    // Atualizar UI
+    atualizarInventarioConstrucao();
+    atualizarUI();
+    C.salvar(estado);
+    
+    aviso('Item colocado! Lote (' + (loteX + 1) + ', ' + (loteZ + 1) + ')', false);
+    
+    // Remover preview e limpar estado
+    grupoEstruturas.remove(modoConstrucao.preview);
+    modoConstrucao.preview = null;
+    modoConstrucao.itemSelecionado = null;
+    modoConstrucao.arrastando = false;
+    
+    // Remover classe do body
+    document.body.classList.remove('arrastando-item');
+    
+    // Remover destaque e classe arrastando
+    var itens = document.querySelectorAll('.item-construcao');
+    itens.forEach(function(el) { 
+      el.classList.remove('selecionado');
+      el.classList.remove('arrastando');
+    });
+  }
+  
+  // Cancelar arraste
+  function cancelarArrasteItem() {
+    if (modoConstrucao.preview) {
+      grupoEstruturas.remove(modoConstrucao.preview);
+      modoConstrucao.preview = null;
+    }
+    modoConstrucao.itemSelecionado = null;
+    modoConstrucao.arrastando = false;
+    
+    // Remover classe do body
+    document.body.classList.remove('arrastando-item');
+    
+    // Remover destaque e classe arrastando
+    var itens = document.querySelectorAll('.item-construcao');
+    itens.forEach(function(el) { 
+      el.classList.remove('selecionado');
+      el.classList.remove('arrastando');
+    });
+    
+    aviso('Arraste cancelado', false);
+  }
+  
+  // Destacar item selecionado no inventário
+  function destacarItemSelecionado(itemId) {
+    var itens = document.querySelectorAll('.item-construcao');
+    itens.forEach(function(item) {
+      item.classList.remove('selecionado');
+    });
+    
+    // Encontrar e destacar o item selecionado
+    itens.forEach(function(item) {
+      var info = item.querySelector('.info .nome');
+      if (info && info.textContent.toLowerCase().includes(itemId.toLowerCase())) {
+        item.classList.add('selecionado');
+      }
+    });
+  }
+
+  // modo construcao
+  var modoConstrucao = { ativo: false, itemId: null, preview: null };
   var reduzirMovimento = global.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var az = 0.6;
+  var pol = 0.72;
+  var dist = 26;
+  var livre = {
+    ligado: false,
+    pos: new THREE.Vector3(),
+    yaw: 0,
+    pitch: 0,
+    vel: new THREE.Vector3(),
+    teclas: {},
+    olhando: false,
+    velo: 9
+  };
 
   var TILE = 1;
-  var GAP = 0.12;
+  var GAP = 0;
   var STEP = TILE + GAP;
   var meio = ((D.GRADE - 1) * STEP) / 2;
 
@@ -125,10 +741,11 @@
     tabuleiro = new THREE.Group();
     cena.add(tabuleiro);
     cena.background = new THREE.Color(CORES_CEU.dia);
-    cena.fog = new THREE.Fog(CORES_CEU.dia, 8, 34);
+    cena.fog = new THREE.Fog(CORES_CEU.dia, 12, 48);
     grupoBlocos = new THREE.Group();
     grupoEstruturas = new THREE.Group();
-    tabuleiro.add(grupoBlocos, grupoEstruturas);
+    grupoDecoracoes = new THREE.Group();
+    tabuleiro.add(grupoBlocos, grupoEstruturas, grupoDecoracoes);
 
     var geo = geometriaBloco();
     estado.blocos.forEach(function (b) {
@@ -141,14 +758,18 @@
       malhasBloco.push(malha);
     });
 
-    // terreno base: da a sensacao de propriedade continua
+    // terreno base grande
+    var tamanhoBase = D.GRADE * STEP + 12;
     var base = new THREE.Mesh(
-      new THREE.BoxGeometry(D.GRADE * STEP + 1.2, 0.5, D.GRADE * STEP + 1.2),
-      materialBase(PAL.base, 'soil', { roughness: 0.95 })
+      new THREE.BoxGeometry(tamanhoBase, 0.5, tamanhoBase),
+      materialBase(0x5a7a42, 'soil', { roughness: 0.95 })
     );
     base.position.y = -0.45;
     base.receiveShadow = true;
     tabuleiro.add(base);
+
+    // ===== DECORACAO DO MAPA =====
+    montarDecoracoes();
 
     malhaSelecao = new THREE.Mesh(
       new THREE.PlaneGeometry(TILE * 1.04, TILE * 1.04),
@@ -159,16 +780,95 @@
     malhaSelecao.visible = false;
     tabuleiro.add(malhaSelecao);
 
+    // ===== FAZENDEIRO COM ANIMACAO =====
     var grupo = new THREE.Group();
-    var corpo = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.46, 0.3), materialBase(0x2f6b5a, null, { roughness: 0.7 }));
-    corpo.position.y = 0.36;
-    var cabeca = new THREE.Mesh(new THREE.SphereGeometry(0.14, 14, 12), materialBase(0xd9b38c, null, { roughness: 0.6 }));
-    cabeca.position.y = 0.66;
-    var chapeu = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.04, 14), materialBase(0xd8b64a, 'brushed', { roughness: 0.5 }));
-    chapeu.position.y = 0.76;
-    grupo.add(corpo, cabeca, chapeu);
+
+    // Pivot das pernas (para animacao)
+    var pivotPernaEsq = new THREE.Group();
+    pivotPernaEsq.position.set(-0.08, 0.2, 0);
+    var pernaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), materialBase(0x1a457b, null, { roughness: 0.8 }));
+    pernaEsq.position.y = -0.1;
+    pivotPernaEsq.add(pernaEsq);
+    // Bota
+    var botaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.06, 0.16), materialBase(0x3a2a1a, null, { roughness: 0.9 }));
+    botaEsq.position.set(0, -0.2, 0.02);
+    pivotPernaEsq.add(botaEsq);
+
+    var pivotPernaDir = new THREE.Group();
+    pivotPernaDir.position.set(0.08, 0.2, 0);
+    var pernaDir = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), materialBase(0x1a457b, null, { roughness: 0.8 }));
+    pernaDir.position.y = -0.1;
+    pivotPernaDir.add(pernaDir);
+    var botaDir = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.06, 0.16), materialBase(0x3a2a1a, null, { roughness: 0.9 }));
+    botaDir.position.set(0, -0.2, 0.02);
+    pivotPernaDir.add(botaDir);
+
+    var corpo = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.3, 0.2), materialBase(0xcc4444, null, { roughness: 0.7 }));
+    corpo.position.y = 0.35;
+    var macacao = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.15, 0.21), materialBase(0x1a457b, null, { roughness: 0.8 }));
+    macacao.position.y = 0.25;
+    var alcaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.22), materialBase(0x1a457b, null, { roughness: 0.8 }));
+    alcaEsq.position.set(-0.1, 0.38, 0);
+    var alcaDir = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.22), materialBase(0x1a457b, null, { roughness: 0.8 }));
+    alcaDir.position.set(0.1, 0.38, 0);
+
+    // Pivot dos bracos (para animacao)
+    var pivotBracoEsq = new THREE.Group();
+    pivotBracoEsq.position.set(-0.21, 0.45, 0);
+    var bracoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.1), materialBase(0xd9b38c, null, { roughness: 0.6 }));
+    bracoEsq.position.y = -0.1;
+    var mangaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), materialBase(0xcc4444, null, { roughness: 0.7 }));
+    mangaEsq.position.y = -0.03;
+    pivotBracoEsq.add(bracoEsq, mangaEsq);
+
+    var pivotBracoDir = new THREE.Group();
+    pivotBracoDir.position.set(0.21, 0.45, 0);
+    var bracoDir = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.1), materialBase(0xd9b38c, null, { roughness: 0.6 }));
+    bracoDir.position.y = -0.1;
+    var mangaDir = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), materialBase(0xcc4444, null, { roughness: 0.7 }));
+    mangaDir.position.y = -0.03;
+    // Ferramenta na mao direita
+    var ferramentaMao = new THREE.Group();
+    ferramentaMao.position.set(0, -0.22, 0.08);
+    pivotBracoDir.add(bracoDir, mangaDir, ferramentaMao);
+
+    var cabeca = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), materialBase(0xd9b38c, null, { roughness: 0.6 }));
+    cabeca.position.y = 0.62;
+    var cabelo = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.24), materialBase(0x4a3a2a, null, { roughness: 0.9 }));
+    cabelo.position.y = 0.72;
+    var olhoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.01), materialBase(0x111111, null, { roughness: 0.3 }));
+    olhoEsq.position.set(-0.05, 0.64, 0.115);
+    var olhoDir = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.01), materialBase(0x111111, null, { roughness: 0.3 }));
+    olhoDir.position.set(0.05, 0.64, 0.115);
+    var nariz = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), materialBase(0xc9a37c, null, { roughness: 0.6 }));
+    nariz.position.set(0, 0.61, 0.115);
+    var chapeuAba = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 16), materialBase(0xd8b64a, 'brushed', { roughness: 0.8 }));
+    chapeuAba.position.y = 0.76;
+    var chapeuCopo = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.16, 0.12, 12), materialBase(0xd8b64a, 'brushed', { roughness: 0.8 }));
+    chapeuCopo.position.y = 0.82;
+
+    grupo.add(
+      pivotPernaEsq, pivotPernaDir, corpo, macacao, alcaEsq, alcaDir,
+      pivotBracoEsq, pivotBracoDir,
+      cabeca, cabelo, olhoEsq, olhoDir, nariz,
+      chapeuAba, chapeuCopo
+    );
+
+    grupo.traverse(function(c) {
+      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+    });
+
+    fazPartes = {
+      pernaEsq: pivotPernaEsq,
+      pernaDir: pivotPernaDir,
+      bracoEsq: pivotBracoEsq,
+      bracoDir: pivotBracoDir,
+      ferramentaMao: ferramentaMao
+    };
+
     tabuleiro.add(grupo);
     malhaFazendeiro = grupo;
+    atualizarFerramentaMao();
 
     luzes.hemi = new THREE.HemisphereLight(0xeaf6ec, 0x4a5a4e, 0.7);
     cena.add(luzes.hemi);
@@ -181,6 +881,301 @@
 
     montarChuva();
     ajustarCamera(0.6, 0.72, 26);
+  }
+
+  // ===== FUNCAO PARA CRIAR ARVORES DECORATIVAS =====
+  function criarArvore(x, z, escala) {
+    var g = new THREE.Group();
+    var alturaVariacao = 0.8 + Math.random() * 0.6;
+    
+    // Tronco
+    var tronco = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.15 * escala, 0.2 * escala, 1.2 * alturaVariacao * escala, 8),
+      materialBase(0x5a4530, 'bark', { roughness: 0.95 })
+    );
+    tronco.position.y = 0.6 * alturaVariacao * escala;
+    tronco.castShadow = true;
+    tronco.receiveShadow = true;
+    g.add(tronco);
+    
+    // Copa - 3 níveis
+    var cores = [0x2f5a2a, 0x3f6a3a, 0x4f7a3a];
+    for (var i = 0; i < 3; i++) {
+      var copa = new THREE.Mesh(
+        new THREE.ConeGeometry(0.8 * escala * (1 - i * 0.2), 0.9 * escala, 8),
+        materialBase(cores[i], 'leaf', { roughness: 0.85 })
+      );
+      copa.position.y = (1.0 + i * 0.5) * alturaVariacao * escala;
+      copa.castShadow = true;
+      copa.receiveShadow = true;
+      g.add(copa);
+    }
+    
+    g.position.set(x, 0, z);
+    
+    // Marcar como cortável
+    g.userData.podeCortar = true;
+    g.userData.tipo = 'arvore';
+    
+    // Adicionar colisão
+    obstaculos.push({
+      pos: new THREE.Vector3(x, 0, z),
+      raio: 0.4 * escala,
+      altura: 2.5 * escala,
+      arvore: g // referência para poder remover
+    });
+    
+    return g;
+  }
+
+  // ===== FUNCAO PARA CRIAR FLORES =====
+  function criarFlor(x, z) {
+    var g = new THREE.Group();
+    
+    // Caule
+    var caule = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.01, 0.015, 0.15, 4),
+      materialBase(0x4a6a3a, null, { roughness: 0.8 })
+    );
+    caule.position.y = 0.075;
+    g.add(caule);
+    
+    // Flor
+    var coresFlores = [0xff6b9d, 0xffaa33, 0xff3366, 0xaa66ff, 0x66aaff, 0xffff66];
+    var cor = coresFlores[Math.floor(Math.random() * coresFlores.length)];
+    
+    for (var i = 0; i < 5; i++) {
+      var petala = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 6, 6),
+        materialBase(cor, null, { roughness: 0.4 })
+      );
+      var angulo = (i / 5) * Math.PI * 2;
+      petala.position.set(
+        Math.cos(angulo) * 0.03,
+        0.16,
+        Math.sin(angulo) * 0.03
+      );
+      petala.scale.set(1, 0.3, 0.6);
+      g.add(petala);
+    }
+    
+    // Centro
+    var centro = new THREE.Mesh(
+      new THREE.SphereGeometry(0.025, 6, 6),
+      materialBase(0xffdd44, null, { roughness: 0.3 })
+    );
+    centro.position.y = 0.16;
+    g.add(centro);
+    
+    g.position.set(x, 0, z);
+    return g;
+  }
+
+  // ===== FUNCAO PARA CRIAR ROCHAS =====
+  function criarRocha(x, z, escala) {
+    var g = new THREE.Group();
+    
+    // Criar rocha irregular
+    var geo = new THREE.DodecahedronGeometry(0.3 * escala, 0);
+    var positions = geo.attributes.position;
+    for (var i = 0; i < positions.count; i++) {
+      var x2 = positions.getX(i);
+      var y2 = positions.getY(i);
+      var z2 = positions.getZ(i);
+      positions.setXYZ(
+        i,
+        x2 * (0.8 + Math.random() * 0.4),
+        y2 * (0.6 + Math.random() * 0.3),
+        z2 * (0.8 + Math.random() * 0.4)
+      );
+    }
+    geo.computeVertexNormals();
+    
+    var rocha = new THREE.Mesh(
+      geo,
+      materialBase(0x6a6a5a, 'brushed', { roughness: 0.95, metalness: 0.05 })
+    );
+    rocha.position.y = 0.15 * escala;
+    rocha.rotation.set(
+      Math.random() * 0.5,
+      Math.random() * Math.PI * 2,
+      Math.random() * 0.5
+    );
+    rocha.castShadow = true;
+    rocha.receiveShadow = true;
+    g.add(rocha);
+    
+    g.position.set(x, 0, z);
+    
+    // Adicionar colisão
+    obstaculos.push({
+      pos: new THREE.Vector3(x, 0, z),
+      raio: 0.35 * escala,
+      altura: 0.5 * escala
+    });
+    
+    return g;
+  }
+
+  // ===== FUNCAO PARA CRIAR MONTANHAS =====
+  function criarMontanha(x, z, largura, altura) {
+    var g = new THREE.Group();
+    
+    // Base da montanha
+    var base = new THREE.Mesh(
+      new THREE.ConeGeometry(largura, altura, 8),
+      materialBase(0x7a8a6a, 'brushed', { roughness: 0.92 })
+    );
+    base.position.y = altura / 2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    g.add(base);
+    
+    // Camada de pedra
+    var pedra = new THREE.Mesh(
+      new THREE.ConeGeometry(largura * 0.7, altura * 0.4, 8),
+      materialBase(0x8a8a7a, 'brushed', { roughness: 0.95 })
+    );
+    pedra.position.y = altura * 0.7;
+    pedra.castShadow = true;
+    g.add(pedra);
+    
+    // Pico nevado (opcional)
+    if (altura > 8) {
+      var neve = new THREE.Mesh(
+        new THREE.ConeGeometry(largura * 0.3, altura * 0.25, 8),
+        materialBase(0xf0f0f0, null, { roughness: 0.6 })
+      );
+      neve.position.y = altura * 0.9;
+      neve.castShadow = true;
+      g.add(neve);
+    }
+    
+    g.position.set(x, 0, z);
+    return g;
+  }
+
+  // ===== FUNCAO PARA CRIAR ARBUSTOS =====
+  function criarArbusto(x, z) {
+    var g = new THREE.Group();
+    
+    // 3-5 moitas
+    var numMoitas = 3 + Math.floor(Math.random() * 3);
+    for (var i = 0; i < numMoitas; i++) {
+      var moita = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15 + Math.random() * 0.1, 6, 6),
+        materialBase(0x5a8a4a, 'leaf', { roughness: 0.88 })
+      );
+      moita.position.set(
+        (Math.random() - 0.5) * 0.3,
+        0.12,
+        (Math.random() - 0.5) * 0.3
+      );
+      moita.scale.y = 0.7;
+      moita.castShadow = true;
+      moita.receiveShadow = true;
+      g.add(moita);
+    }
+    
+    g.position.set(x, 0, z);
+    return g;
+  }
+
+  // ===== FUNCAO PRINCIPAL PARA MONTAR DECORACOES =====
+  function montarDecoracoes() {
+    obstaculos = []; // Limpar obstáculos
+    
+    var raioMapa = D.GRADE * STEP / 2 + 6;
+    var distanciaMontanha = raioMapa + 8;
+    
+    // === MONTANHAS AO REDOR (8 montanhas grandes) ===
+    var angulosMontanha = [0, 45, 90, 135, 180, 225, 270, 315];
+    angulosMontanha.forEach(function(angulo) {
+      var rad = angulo * Math.PI / 180;
+      var x = Math.cos(rad) * distanciaMontanha;
+      var z = Math.sin(rad) * distanciaMontanha;
+      var altura = 10 + Math.random() * 8;
+      var largura = 6 + Math.random() * 4;
+      grupoDecoracoes.add(criarMontanha(x, z, largura, altura));
+    });
+    
+    // === MONTANHAS MENORES (16 colinas) ===
+    for (var i = 0; i < 16; i++) {
+      var angulo = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
+      var distancia = raioMapa + 4 + Math.random() * 6;
+      var x = Math.cos(angulo) * distancia;
+      var z = Math.sin(angulo) * distancia;
+      var altura = 4 + Math.random() * 5;
+      var largura = 3 + Math.random() * 2;
+      grupoDecoracoes.add(criarMontanha(x, z, largura, altura));
+    }
+    
+    // === ARVORES AO REDOR DO MAPA (40-50 árvores) ===
+    var numArvores = 40 + Math.floor(Math.random() * 10);
+    for (var i = 0; i < numArvores; i++) {
+      var angulo = Math.random() * Math.PI * 2;
+      var distancia = raioMapa + Math.random() * 4;
+      var x = Math.cos(angulo) * distancia;
+      var z = Math.sin(angulo) * distancia;
+      var escala = 0.6 + Math.random() * 0.8;
+      grupoDecoracoes.add(criarArvore(x, z, escala));
+    }
+    
+    // === ARVORES DENTRO DA AREA JOGAVEL (espaçadas) ===
+    for (var i = 0; i < 15; i++) {
+      var x = (Math.random() - 0.5) * raioMapa * 0.9;
+      var z = (Math.random() - 0.5) * raioMapa * 0.9;
+      
+      // Verificar se não está muito perto do centro
+      if (Math.sqrt(x * x + z * z) > 3) {
+        var escala = 0.5 + Math.random() * 0.6;
+        grupoDecoracoes.add(criarArvore(x, z, escala));
+      }
+    }
+    
+    // === FLORES ESPALHADAS (80-100 flores) ===
+    var numFlores = 80 + Math.floor(Math.random() * 20);
+    for (var i = 0; i < numFlores; i++) {
+      var x = (Math.random() - 0.5) * raioMapa * 0.95;
+      var z = (Math.random() - 0.5) * raioMapa * 0.95;
+      grupoDecoracoes.add(criarFlor(x, z));
+    }
+    
+    // === ARBUSTOS (30-40 arbustos) ===
+    var numArbustos = 30 + Math.floor(Math.random() * 10);
+    for (var i = 0; i < numArbustos; i++) {
+      var x = (Math.random() - 0.5) * raioMapa * 0.9;
+      var z = (Math.random() - 0.5) * raioMapa * 0.9;
+      grupoDecoracoes.add(criarArbusto(x, z));
+    }
+    
+    // === ROCHAS (20-30 rochas) ===
+    var numRochas = 20 + Math.floor(Math.random() * 10);
+    for (var i = 0; i < numRochas; i++) {
+      var angulo = Math.random() * Math.PI * 2;
+      var distancia = raioMapa * 0.5 + Math.random() * raioMapa * 0.4;
+      var x = Math.cos(angulo) * distancia;
+      var z = Math.sin(angulo) * distancia;
+      var escala = 0.8 + Math.random() * 1.2;
+      grupoDecoracoes.add(criarRocha(x, z, escala));
+    }
+    
+    // === GRAMA ALTA (partículas decorativas) ===
+    var gramaPositions = new Float32Array(300 * 3);
+    for (var i = 0; i < 300; i++) {
+      gramaPositions[i * 3] = (Math.random() - 0.5) * raioMapa;
+      gramaPositions[i * 3 + 1] = 0.1 + Math.random() * 0.2;
+      gramaPositions[i * 3 + 2] = (Math.random() - 0.5) * raioMapa;
+    }
+    var gramaGeo = new THREE.BufferGeometry();
+    gramaGeo.setAttribute('position', new THREE.BufferAttribute(gramaPositions, 3));
+    var grama = new THREE.Points(gramaGeo, new THREE.PointsMaterial({
+      color: 0x6a9a5a,
+      size: 0.15,
+      transparent: true,
+      opacity: 0.6
+    }));
+    grupoDecoracoes.add(grama);
   }
 
   function montarChuva() {
@@ -201,12 +1196,42 @@
   }
 
   function ajustarCamera(az, pol, dist) {
+    var alvoX = 0, alvoZ = 0;
+    if (malhaFazendeiro && (!livre || !livre.ligado)) {
+      alvoX = malhaFazendeiro.position.x;
+      alvoZ = malhaFazendeiro.position.z;
+    }
     camera.position.set(
-      dist * Math.sin(pol) * Math.sin(az),
+      alvoX + dist * Math.sin(pol) * Math.sin(az),
       dist * Math.cos(pol),
-      dist * Math.sin(pol) * Math.cos(az)
+      alvoZ + dist * Math.sin(pol) * Math.cos(az)
     );
-    camera.lookAt(0, 0, 0);
+    camera.lookAt(alvoX, 0, alvoZ);
+  }
+
+  function atualizarFerramentaMao() {
+    if (!fazPartes.ferramentaMao || !estado) return;
+    // Limpa a ferramenta atual
+    fazPartes.ferramentaMao.clear();
+    
+    // Adiciona a ferramenta selecionada
+    var ferramenta = estado.ferramenta;
+    var tool = null;
+    
+    if (ferramenta === 'enxada') {
+      tool = construirEnxada();
+      tool.scale.set(0.5, 0.5, 0.5);
+    } else if (ferramenta === 'regador') {
+      tool = construirRegador();
+      tool.scale.set(0.4, 0.4, 0.4);
+    } else if (ferramenta === 'machado') {
+      tool = construirMachado();
+      tool.scale.set(0.45, 0.45, 0.45);
+    }
+    
+    if (tool) {
+      fazPartes.ferramentaMao.add(tool);
+    }
   }
 
   var FORMA_CULTURA = {
@@ -353,6 +1378,279 @@
     return g;
   }
 
+  function construirMachado() {
+    var g = new THREE.Group();
+    // Cabo de madeira
+    var cabo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.025, 0.65, 8), 
+      materialBase(0x8b4513, 'bark', { roughness: 0.85 })
+    );
+    cabo.position.y = 0.32;
+    cabo.rotation.z = 0.25;
+    
+    // Lâmina de metal
+    var lamina = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.15, 0.03), 
+      materialBase(0xc0c0c0, 'brushed', { metalness: 0.8, roughness: 0.3 })
+    );
+    lamina.position.set(-0.08, 0.62, 0);
+    lamina.rotation.z = 0.25;
+    
+    // Detalhe da lâmina (fio)
+    var fio = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.02, 0.04), 
+      materialBase(0xe0e0e0, 'brushed', { metalness: 0.9, roughness: 0.2 })
+    );
+    fio.position.set(-0.08, 0.69, 0);
+    fio.rotation.z = 0.25;
+    
+    g.add(cabo, lamina, fio);
+    return g;
+  }
+
+  // === MODELOS 3D DOS ITENS DA LOJA ===
+  
+  function criarModeloItem(itemId) {
+    var g = new THREE.Group();
+    g.userData.itemId = itemId;
+    g.userData.animado = true;
+    
+    if (itemId === 'trator' || itemId === 'tratorEletrico') {
+      var eletrico = itemId === 'tratorEletrico';
+      g.add(construirVeiculo(eletrico ? 0x3f8f7a : 0x8a4a2a, eletrico));
+      g.userData.tipo = 'veiculo';
+    } else if (itemId === 'drone') {
+      g.add(construirDrone());
+      g.userData.tipo = 'drone';
+      g.userData.flutuando = true;
+    } else if (itemId === 'colheitadeira') {
+      g.add(construirColheitadeira());
+      g.userData.tipo = 'veiculo';
+    } else if (itemId === 'gotejamento') {
+      g.add(construirGotejamento());
+      g.userData.tipo = 'estatico';
+      g.userData.animaAgua = true;
+    } else if (itemId === 'composteira') {
+      var caixote = caixaDe(0x6f5a3f, 0.4, 0.3, 0.4, 'bark', 0.15);
+      var tampa = caixaDe(0x8a6b3f, 0.44, 0.06, 0.44, 'bark', 0.32);
+      var adubo = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), materialBase(0x4a3a26, 'soil'));
+      adubo.position.y = 0.35;
+      g.add(caixote, tampa, adubo);
+      g.userData.tipo = 'estatico';
+      g.userData.particulas = true;
+    } else if (itemId === 'arvore') {
+      // Árvore de reflorestamento
+      var tronco = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.08, 0.4, 7), 
+        materialBase(0x5a4530, 'bark', { roughness: 0.95 })
+      );
+      tronco.position.y = 0.2;
+      var copa = new THREE.Mesh(
+        new THREE.SphereGeometry(0.3, 12, 10), 
+        materialBase(0x4f7a3a, 'leaf', { roughness: 0.85 })
+      );
+      copa.position.y = 0.62;
+      copa.scale.set(1, 0.85, 1);
+      g.add(tronco, copa);
+      g.userData.tipo = 'estatico';
+    } else if (itemId === 'enxada') {
+      g.add(construirEnxada());
+      g.userData.tipo = 'ferramenta';
+    } else if (itemId === 'regador') {
+      g.add(construirRegador());
+      g.userData.tipo = 'ferramenta';
+    } else {
+      // Item genérico caso não seja reconhecido
+      console.warn('Item não reconhecido:', itemId);
+      var placeholder = caixaDe(0x888888, 0.3, 0.3, 0.3, null, 0.15);
+      g.add(placeholder);
+      g.userData.tipo = 'estatico';
+    }
+    
+    // Adicionar sombras
+    g.traverse(function(obj) {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
+    
+    return g;
+  }
+  
+  // Função para criar preview transparente do item
+  function criarPreviewItem(itemId) {
+    console.log('Criando preview para:', itemId); // DEBUG
+    
+    var preview = criarModeloItem(itemId);
+    
+    if (!preview) {
+      console.error('criarModeloItem retornou null/undefined para', itemId);
+      return null;
+    }
+    
+    console.log('Preview criado, aplicando materiais transparentes...'); // DEBUG
+    
+    // Aplicar material transparente em todos os meshes
+    preview.traverse(function(obj) {
+      if (obj.isMesh && obj.material) {
+        // Clonar material para não afetar outros objetos
+        var mat = obj.material.clone();
+        mat.transparent = true;
+        mat.opacity = 0.6;
+        
+        // Garantir que tem propriedade emissive
+        if (!mat.emissive) {
+          mat.emissive = new THREE.Color(0x4af0ff);
+        } else {
+          mat.emissive.setHex(0x4af0ff);
+        }
+        mat.emissiveIntensity = 0.3;
+        
+        // Desabilitar depthWrite para melhor transparência
+        mat.depthWrite = false;
+        
+        // Renderizar por cima de outros objetos
+        obj.renderOrder = 999;
+        
+        obj.material = mat;
+        
+        console.log('Material aplicado ao mesh'); // DEBUG
+      }
+    });
+    
+    // Ajustar a posição Y para o item ficar visível (acima do chão)
+    preview.position.y = 0.3;
+    
+    console.log('Preview finalizado com', preview.children.length, 'children'); // DEBUG
+    
+    return preview;
+  }
+  
+  // Função para animar itens colocados
+  function animarItem(item, dt) {
+    if (!item.userData.animado) return;
+    
+    var tipo = item.userData.tipo;
+    
+    if (item.userData.flutuando) {
+      // Drone flutuando
+      item.position.y = 0.8 + Math.sin(Date.now() * 0.002) * 0.1;
+      item.rotation.y += dt * 0.5;
+      
+      // Girar hélices
+      item.traverse(function(obj) {
+        if (obj.geometry && obj.geometry.type === 'CylinderGeometry' && obj.position.y > 0.3) {
+          obj.rotation.y += dt * 20;
+        }
+      });
+    }
+    
+    if (item.userData.animaAgua) {
+      // Gotejamento - animar gotas
+      var tempo = Date.now() * 0.003;
+      if (Math.random() < 0.05) {
+        criarGotaAgua(item.position.x, item.position.z);
+      }
+    }
+    
+    if (item.userData.particulas) {
+      // Composteira - partículas de vapor
+      if (Math.random() < 0.02) {
+        criarParticulaVapor(item.position.x, item.position.y + 0.4, item.position.z);
+      }
+    }
+  }
+  
+  // Partículas de água
+  function criarGotaAgua(x, z) {
+    var gota = new THREE.Mesh(
+      new THREE.SphereGeometry(0.02, 4, 4),
+      materialBase(0x4a90a8, null, { transparent: true, opacity: 0.7 })
+    );
+    gota.position.set(x + (Math.random() - 0.5) * 0.3, 0.16, z + (Math.random() - 0.5) * 0.3);
+    gota.userData.velocidade = -0.01;
+    gota.userData.vida = 1.0;
+    grupoDecoracoes.add(gota);
+    modoConstrucao.animacoes.push(gota);
+  }
+  
+  // Partículas de vapor
+  function criarParticulaVapor(x, y, z) {
+    var vapor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 4, 4),
+      materialBase(0xcccccc, null, { transparent: true, opacity: 0.4 })
+    );
+    vapor.position.set(
+      x + (Math.random() - 0.5) * 0.2, 
+      y, 
+      z + (Math.random() - 0.5) * 0.2
+    );
+    vapor.userData.velocidade = 0.005;
+    vapor.userData.vida = 1.0;
+    grupoDecoracoes.add(vapor);
+    modoConstrucao.animacoes.push(vapor);
+  }
+  
+  // Função para cortar árvore decorativa
+  function cortarArvore(arvore) {
+    if (!arvore || !arvore.userData.podeCortar) return false;
+    
+    // Animação de corte
+    var angulo = 0;
+    var velocidade = 0.02;
+    var intervalo = setInterval(function() {
+      angulo += velocidade;
+      velocidade += 0.001;
+      arvore.rotation.z = angulo;
+      arvore.position.y -= velocidade * 0.5;
+      
+      if (angulo > Math.PI / 2) {
+        clearInterval(intervalo);
+        // Remover árvore
+        grupoDecoracoes.remove(arvore);
+        
+        // Remover obstáculo
+        var idx = obstaculos.findIndex(function(obs) {
+          return obs.pos.distanceTo(arvore.position) < 0.1;
+        });
+        if (idx >= 0) obstaculos.splice(idx, 1);
+        
+        // Diminuir pegada ecológica
+        if (estado) {
+          C.modificarPegada(estado, -5);
+          aviso('Árvore cortada! Pegada ecológica -5', false);
+          atualizarUI();
+        }
+        
+        // Criar toras no chão
+        criarTorasNoChao(arvore.position.x, arvore.position.z);
+      }
+    }, 16);
+    
+    return true;
+  }
+  
+  // Criar toras de madeira no chão
+  function criarTorasNoChao(x, z) {
+    for (var i = 0; i < 3; i++) {
+      var tora = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8),
+        materialBase(0x8b6f47, 'bark', { roughness: 0.9 })
+      );
+      tora.position.set(
+        x + (Math.random() - 0.5) * 0.5,
+        0.04,
+        z + (Math.random() - 0.5) * 0.5
+      );
+      tora.rotation.z = Math.PI / 2;
+      tora.rotation.y = Math.random() * Math.PI;
+      tora.castShadow = true;
+      tora.receiveShadow = true;
+      grupoDecoracoes.add(tora);
+    }
+  }
+
   function construirGotejamento() {
     var g = new THREE.Group();
     var cano = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.05), materialBase(0x4a6a5a, 'brushed', { metalness: 0.4, roughness: 0.4 }));
@@ -451,8 +1749,22 @@
       malha.material.roughness = b.bloqueado ? 0.98 : 0.88;
     });
 
+    // Salvar itens do modo construção antes de limpar
+    var itensConstrucao = [];
+    grupoEstruturas.children.forEach(function(child) {
+      if (child.userData && child.userData.permanente) {
+        itensConstrucao.push(child);
+      }
+    });
+    
     // estruturas e culturas
     grupoEstruturas.clear();
+    
+    // Re-adicionar itens do modo construção
+    itensConstrucao.forEach(function(item) {
+      grupoEstruturas.add(item);
+    });
+    
     var noturnas = [];
     estado.blocos.forEach(function (b) {
       if (b.bloqueado) return;
@@ -479,18 +1791,111 @@
   function montarFerramentas() {
     var caixa = ui('ferramentas');
     caixa.textContent = '';
+    
+    // Função para criar ícones SVG personalizados
+    function criarIconeSVG(id) {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('width', '22');
+      svg.setAttribute('height', '22');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      svg.style.flexShrink = '0';
+      
+      var path = '';
+      
+      if (id === 'plantar') {
+        // Semente com broto
+        path = '<path d="M12 22v-8m0 0c-2-1-4-3-4-6 0-2.5 1.8-4 4-4s4 1.5 4 4c0 3-2 5-4 6z"/>' +
+               '<circle cx="12" cy="3" r="1" fill="currentColor"/>' +
+               '<path d="M8 14c-1 1-2 2-2 4h12c0-2-1-3-2-4"/>';
+      } else if (id === 'regar') {
+        // Gotas de água
+        path = '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/>' +
+               '<path d="M12 18v-4m-2 2h4"/>';
+      } else if (id === 'adubar') {
+        // Saco com nutrientes
+        path = '<path d="M8 2v4m8-4v4M6 6h12l1.5 14a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1L6 6z"/>' +
+               '<circle cx="10" cy="13" r="1" fill="currentColor"/>' +
+               '<circle cx="14" cy="15" r="1" fill="currentColor"/>' +
+               '<circle cx="12" cy="17" r="1" fill="currentColor"/>';
+      } else if (id === 'colher') {
+        // Foice de colheita
+        path = '<path d="M4 19c0-4 4-7 7-7 4 0 9 2 9 7"/>' +
+               '<path d="M11 12V4m0 0L8 7m3-3l3 3"/>' +
+               '<circle cx="8" cy="19" r="1" fill="currentColor"/>' +
+               '<circle cx="12" cy="19" r="1" fill="currentColor"/>' +
+               '<circle cx="16" cy="19" r="1" fill="currentColor"/>';
+      } else if (id === 'despoluir') {
+        // Vassoura com brilho
+        path = '<path d="M12 3v15m0 0l-3 3h6l-3-3z"/>' +
+               '<path d="M9 18v-5h6v5M7 3l1 1m8-1l-1 1M3 7l1-1m16 1l-1-1"/>';
+      } else if (id === 'enxada') {
+        // Enxada
+        path = '<path d="M14 4h3a2 2 0 0 1 2 2v3l-6 6m0 0l-8 8m8-8l-3-3"/>' +
+               '<rect x="16" y="2" width="5" height="5" rx="1" transform="rotate(45 18.5 4.5)" stroke-width="1.5"/>';
+      } else if (id === 'regador') {
+        // Regador com água saindo
+        path = '<ellipse cx="11" cy="11" rx="4" ry="2.5"/>' +
+               '<path d="M11 8.5V3m0 0L9 5m2-2l2 2M7 13.5l-2 8h12l-2-8"/>' +
+               '<path d="M9 19l.5 2m2.5-2l.5 2m2.5-2l.5 2" stroke-width="1"/>';
+      } else if (id === 'machado') {
+        // Machado
+        path = '<path d="M7 22V2m0 0h6a4 4 0 0 1 4 4v2a4 4 0 0 1-4 4H7m0-10v10"/>' +
+               '<path d="M13 6h4m-4 2h3" stroke-width="1.5"/>';
+      } else if (id === 'construcao') {
+        // Modo construção (martelo + ferramenta)
+        path = '<path d="M14.5 2l-4 4m0 0L6 10.5 13.5 18 18 13.5 13.5 9l-3-3z"/>' +
+               '<path d="M10 14l-6 6m12-12l6-6"/>' +
+               '<rect x="2" y="18" width="4" height="4" rx="1"/>' +
+               '<circle cx="19" cy="5" r="2" fill="currentColor"/>';
+      } else if (id === 'arvore') {
+        // Árvore com folhas
+        path = '<path d="M12 3v18M8 5c0 4 4 6 4 6s4-2 4-6c0-3-1.8-5-4-5s-4 2-4 5z"/>' +
+               '<circle cx="8" cy="7" r="1.5" fill="currentColor"/>' +
+               '<circle cx="16" cy="7" r="1.5" fill="currentColor"/>' +
+               '<circle cx="12" cy="4" r="1.5" fill="currentColor"/>';
+      }
+      
+      svg.innerHTML = path;
+      return svg;
+    }
+    
     FERRAMENTAS.forEach(function (f) {
       var b = document.createElement('button');
       b.type = 'button';
       b.dataset.ferramenta = f.id;
-      var marca = document.createElement('span');
-      marca.className = 'marca';
-      marca.style.background = f.cor;
-      b.appendChild(marca);
+      
+      // Adicionar ícone SVG
+      var icone = criarIconeSVG(f.id);
+      icone.style.color = f.cor;
+      b.appendChild(icone);
+      
+      // Adicionar nome
       b.appendChild(document.createTextNode(f.nome));
+      
       b.addEventListener('click', function () {
+        // Se clicar em "Modo Construção"
+        if (f.id === 'construcao') {
+          if (!modoConstrucao.ativo) {
+            ativarModoConstrucao();
+          } else {
+            desativarModoConstrucao();
+          }
+          return;
+        }
+        
+        // Se modo construção está ativo e clicou em outra ferramenta, desativar
+        if (modoConstrucao.ativo) {
+          desativarModoConstrucao();
+        }
+        
         estado.ferramenta = f.id;
         marcarFerramenta();
+        atualizarFerramentaMao();
       });
       caixa.appendChild(b);
     });
@@ -512,7 +1917,7 @@
       var o = document.createElement('option');
       o.value = id;
       o.textContent = c.nome + ' (' + (estado.graos[id] || 0) + ')';
-      if (c.nivel > estado.nivel) o.disabled = true;
+      // VERIFICAÇÃO DE NÍVEL REMOVIDA - todas as sementes sempre disponíveis
       if (id === estado.semente) o.selected = true;
       sel.appendChild(o);
     });
@@ -631,14 +2036,18 @@
       Object.keys(fonte).forEach(function (id) {
         var m = fonte[id];
         var possui = estado.itens[id] || 0;
-        var podeNivel = m.nivel <= estado.nivel;
+        var temDinheiro = estado.dinheiro >= m.custo;
+        
+        // Determinar o texto do botão
+        var textoBotao = temDinheiro ? 'Comprar' : 'Sem dinheiro (falta $' + (m.custo - estado.dinheiro) + ')';
+        
         lista.appendChild(cartao(
-          m.nome + (possui ? '  x' + possui : ''),
+          m.nome + (possui ? ' x' + possui : ''),
           m.desc,
           '$' + m.custo,
-          'nivel ' + m.nivel,
-          podeNivel && estado.dinheiro >= m.custo,
-          'Comprar',
+          '', // Sem indicador de nível
+          temDinheiro, // Só precisa de dinheiro
+          textoBotao,
           function () {
             var r = C.comprarItem(estado, id);
             aviso(r.msg, !r.ok);
@@ -651,14 +2060,17 @@
     } else if (abaAtual === 'sementes') {
       Object.keys(D.CULTURAS).forEach(function (id) {
         var c = D.CULTURAS[id];
-        var podeNivel = c.nivel <= estado.nivel;
+        var temDinheiro = estado.dinheiro >= c.semente;
+        
+        var textoBotao = temDinheiro ? 'Comprar 1' : 'Sem dinheiro';
+        
         lista.appendChild(cartao(
           c.nome,
           c.dias + ' dias - vende por $' + c.vende + ' - ' + c.xp + ' XP',
           '$' + c.semente + ' por semente',
-          'nivel ' + c.nivel,
-          podeNivel && estado.dinheiro >= c.semente,
-          'Comprar 1',
+          '', // Sem indicador de nível
+          temDinheiro,
+          textoBotao,
           function () {
             var r = C.comprarSemente(estado, id, 1);
             aviso(r.msg, !r.ok);
@@ -854,11 +2266,177 @@
       });
     }
 
-    if (malhaFazendeiro && selecionado) {
-      var alvo = posicaoDe(selecionado);
-      malhaFazendeiro.position.x += (alvo[0] - malhaFazendeiro.position.x) * 0.12;
-      malhaFazendeiro.position.z += (alvo[2] - malhaFazendeiro.position.z) * 0.12;
-      malhaFazendeiro.rotation.y = Math.atan2(alvo[0] - malhaFazendeiro.position.x, alvo[2] - malhaFazendeiro.position.z);
+    if (malhaFazendeiro && !modoConstrucao.ativo) {
+      var mx = 0, mz = 0;
+      var pulou = false;
+      
+      if (!livre.ligado) {
+        var t = livre.teclas;
+        if (t.w) mz -= 1;
+        if (t.s) mz += 1;
+        if (t.a) mx -= 1;
+        if (t.d) mx += 1;
+        if (t[' '] && fisica.noChao) {
+          pulou = true;
+          fisica.velocidadeY = fisica.forcaPulo;
+          fisica.noChao = false;
+        }
+      }
+      
+      // === FISICA DE MOVIMENTO ===
+      if (mx !== 0 || mz !== 0) {
+        selecionado = null;
+        malhaSelecao.visible = false;
+        var norma = Math.sqrt(mx * mx + mz * mz);
+        mx /= norma; mz /= norma;
+        
+        // Transformar movimento relativo à câmera
+        var s = Math.sin(az);
+        var c = Math.cos(az);
+        var dirX = mx * c + mz * s;
+        var dirZ = -mx * s + mz * c;
+        
+        // Aplicar aceleração
+        fisica.velocidade.x += dirX * fisica.aceleracao;
+        fisica.velocidade.z += dirZ * fisica.aceleracao;
+        
+        // Limitar velocidade máxima
+        var velHorizontal = Math.sqrt(
+          fisica.velocidade.x * fisica.velocidade.x + 
+          fisica.velocidade.z * fisica.velocidade.z
+        );
+        if (velHorizontal > fisica.velocidadeMaxima) {
+          fisica.velocidade.x *= fisica.velocidadeMaxima / velHorizontal;
+          fisica.velocidade.z *= fisica.velocidadeMaxima / velHorizontal;
+        }
+        
+        andando = true;
+        tempoAndar += dt * 8;
+        malhaFazendeiro.rotation.y = Math.atan2(fisica.velocidade.x, fisica.velocidade.z);
+      } else {
+        andando = false;
+        // Aplicar fricção
+        fisica.velocidade.x *= fisica.friccao;
+        fisica.velocidade.z *= fisica.friccao;
+        
+        if (selecionado) {
+          var alvo = posicaoDe(selecionado);
+          var dx = alvo[0] - malhaFazendeiro.position.x;
+          var dz = alvo[2] - malhaFazendeiro.position.z;
+          var distancia = Math.sqrt(dx * dx + dz * dz);
+          
+          if (distancia > 0.1) {
+            malhaFazendeiro.position.x += dx * 0.12;
+            malhaFazendeiro.position.z += dz * 0.12;
+            malhaFazendeiro.rotation.y = Math.atan2(dx, dz);
+          }
+        }
+      }
+      
+      // === APLICAR GRAVIDADE ===
+      fisica.velocidadeY += fisica.gravidade;
+      
+      // Calcular nova posição
+      var novaPosX = malhaFazendeiro.position.x + fisica.velocidade.x;
+      var novaPosY = malhaFazendeiro.position.y + fisica.velocidadeY;
+      var novaPosZ = malhaFazendeiro.position.z + fisica.velocidade.z;
+      
+      // === DETECÇÃO DE COLISÃO COM OBSTÁCULOS ===
+      var colidiu = false;
+      for (var i = 0; i < obstaculos.length; i++) {
+        var obs = obstaculos[i];
+        var dx = novaPosX - obs.pos.x;
+        var dz = novaPosZ - obs.pos.z;
+        var distancia = Math.sqrt(dx * dx + dz * dz);
+        var somaRaios = fisica.raio + obs.raio;
+        
+        if (distancia < somaRaios && novaPosY < obs.altura) {
+          // Colidiu - empurrar para fora
+          var angulo = Math.atan2(dz, dx);
+          novaPosX = obs.pos.x + Math.cos(angulo) * somaRaios;
+          novaPosZ = obs.pos.z + Math.sin(angulo) * somaRaios;
+          fisica.velocidade.x *= 0.5;
+          fisica.velocidade.z *= 0.5;
+          colidiu = true;
+        }
+      }
+      
+      // === LIMITES DO MAPA ===
+      var limite = (D.GRADE / 2 + 1) * STEP;
+      novaPosX = Math.max(-limite, Math.min(limite, novaPosX));
+      novaPosZ = Math.max(-limite, Math.min(limite, novaPosZ));
+      
+      // === CHÃO ===
+      if (novaPosY <= 0) {
+        novaPosY = 0;
+        fisica.velocidadeY = 0;
+        fisica.noChao = true;
+      } else {
+        fisica.noChao = false;
+      }
+      
+      // Aplicar posição
+      malhaFazendeiro.position.x = novaPosX;
+      malhaFazendeiro.position.y = novaPosY;
+      malhaFazendeiro.position.z = novaPosZ;
+      
+      // === ANIMAÇÃO DE CAMINHADA ===
+      if (fazPartes.pernaEsq && fazPartes.pernaDir && fazPartes.bracoEsq && fazPartes.bracoDir) {
+        if (andando) {
+          // Balanço das pernas (opostas)
+          fazPartes.pernaEsq.rotation.x = Math.sin(tempoAndar) * 0.5;
+          fazPartes.pernaDir.rotation.x = Math.sin(tempoAndar + Math.PI) * 0.5;
+          
+          // Balanço dos braços (opostos às pernas)
+          fazPartes.bracoEsq.rotation.x = Math.sin(tempoAndar + Math.PI) * 0.35;
+          fazPartes.bracoDir.rotation.x = Math.sin(tempoAndar) * 0.35;
+          
+          // Pequeno balanço vertical do corpo
+          malhaFazendeiro.position.y += Math.abs(Math.sin(tempoAndar * 2)) * 0.02;
+        } else {
+          // Retornar suavemente à posição neutra
+          fazPartes.pernaEsq.rotation.x *= 0.85;
+          fazPartes.pernaDir.rotation.x *= 0.85;
+          fazPartes.bracoEsq.rotation.x *= 0.85;
+          fazPartes.bracoDir.rotation.x *= 0.85;
+        }
+        
+        // Animação de pulo
+        if (!fisica.noChao) {
+          fazPartes.pernaEsq.rotation.x = -0.3;
+          fazPartes.pernaDir.rotation.x = -0.3;
+          fazPartes.bracoEsq.rotation.x = -0.8;
+          fazPartes.bracoDir.rotation.x = -0.8;
+        }
+      }
+      
+      if (!livre.ligado) ajustarCamera(az, pol, dist);
+    }
+    
+    // === ANIMAR ITENS COLOCADOS NO MODO CONSTRUCAO ===
+    if (modoConstrucao && modoConstrucao.itemsPosicionados) {
+      modoConstrucao.itemsPosicionados.forEach(function(item) {
+        animarItem(item, dt);
+      });
+    }
+    
+    // === ATUALIZAR PARTICULAS ===
+    if (modoConstrucao && modoConstrucao.animacoes) {
+      for (var i = modoConstrucao.animacoes.length - 1; i >= 0; i--) {
+        var particula = modoConstrucao.animacoes[i];
+        particula.userData.vida -= dt * 0.5;
+        
+        if (particula.userData.vida <= 0) {
+          grupoDecoracoes.remove(particula);
+          modoConstrucao.animacoes.splice(i, 1);
+        } else {
+          particula.position.y += particula.userData.velocidade;
+          if (particula.material.opacity) {
+            particula.material.opacity = particula.userData.vida * 0.7;
+          }
+          particula.scale.multiplyScalar(1 + dt * 0.5);
+        }
+      }
     }
 
     var mudouDia = Math.floor(estado.relogio * 100) !== Math.floor((estado.relogio - dt / D.DIA_SEGUNDOS) * 100);
@@ -884,20 +2462,7 @@
     var moveu = false;
     var ultimoX = 0;
     var ultimoY = 0;
-    var az = 0.6;
-    var pol = 0.72;
-    var dist = 26;
 
-    var livre = {
-      ligado: false,
-      pos: new THREE.Vector3(),
-      yaw: 0,
-      pitch: 0,
-      vel: new THREE.Vector3(),
-      teclas: {},
-      olhando: false,
-      velo: 9
-    };
 
     function paintMira() {
       var marcado = document.body.classList.contains('mirando');
@@ -1028,6 +2593,96 @@
         aplicarLivre();
         return;
       }
+      
+      // === MODO CONSTRUCAO: ATUALIZAR PREVIEW DURANTE ARRASTE ===
+      if (modoConstrucao.ativo && modoConstrucao.arrastando && modoConstrucao.preview) {
+        console.log('Movendo preview...'); // DEBUG
+        
+        var r = palco.getBoundingClientRect();
+        mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+        mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+        ray.setFromCamera(mouse, camera);
+        
+        // Raycast no chão (plano Y=0)
+        var planoChao = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        var pontoIntersecao = new THREE.Vector3();
+        var intersectou = ray.ray.intersectPlane(planoChao, pontoIntersecao);
+        
+        console.log('Intersectou:', intersectou, 'Ponto:', pontoIntersecao); // DEBUG
+        
+        if (intersectou && pontoIntersecao) {
+          // Aplicar snap to grid (agora retorna também os índices de bloco)
+          var snapped = snapToGrid(pontoIntersecao.x, pontoIntersecao.z);
+          
+          console.log('Snapped:', snapped); // DEBUG
+          
+          // Buscar bloco usando os índices corretos
+          var blocoValido = C.blocoEm(estado, snapped.blocoX, snapped.blocoZ);
+          
+          console.log('Bloco encontrado:', blocoValido); // DEBUG
+          
+          if (blocoValido && !blocoValido.bloqueado) {
+            console.log('Bloco válido:', blocoValido.x, blocoValido.z); // DEBUG
+            
+            // Verificar se o bloco está em lote comprado
+            var loteX = Math.floor(blocoValido.x / D.LOTE);
+            var loteZ = Math.floor(blocoValido.z / D.LOTE);
+            var chaveLote = loteX + ':' + loteZ;
+            
+            console.log('Verificando lote:', chaveLote, 'Comprado:', !!estado.lotes[chaveLote]); // DEBUG
+            
+            if (estado.lotes[chaveLote]) {
+              // Posição válida - mostrar preview verde
+              modoConstrucao.preview.visible = true;
+              modoConstrucao.preview.position.set(snapped.x, 0.3, snapped.z);
+              
+              console.log('✅ Preview VERDE em:', snapped.x, 0.3, snapped.z); // DEBUG
+              
+              // Cor verde para válido
+              modoConstrucao.preview.traverse(function(obj) {
+                if (obj.isMesh && obj.material) {
+                  if (!obj.material.emissive) {
+                    obj.material.emissive = new THREE.Color(0x00ff00);
+                  } else {
+                    obj.material.emissive.setHex(0x00ff00);
+                  }
+                  obj.material.emissiveIntensity = 0.4;
+                  obj.material.opacity = 0.7;
+                }
+              });
+            } else {
+              // Posição inválida - mostrar preview vermelho
+              modoConstrucao.preview.visible = true;
+              modoConstrucao.preview.position.set(snapped.x, 0.3, snapped.z);
+              
+              console.log('❌ Preview VERMELHO (lote não comprado) em:', snapped.x, 0.3, snapped.z); // DEBUG
+              
+              // Cor vermelha para inválido
+              modoConstrucao.preview.traverse(function(obj) {
+                if (obj.isMesh && obj.material) {
+                  if (!obj.material.emissive) {
+                    obj.material.emissive = new THREE.Color(0xff0000);
+                  } else {
+                    obj.material.emissive.setHex(0xff0000);
+                  }
+                  obj.material.emissiveIntensity = 0.6;
+                  obj.material.opacity = 0.6;
+                }
+              });
+            }
+          } else {
+            // Fora do mapa ou bloqueado
+            console.log('⚠️ Fora do mapa ou bloqueado'); // DEBUG
+            modoConstrucao.preview.visible = false;
+          }
+        } else {
+          // Não intersectou o chão
+          console.log('⚠️ Não intersectou o chão'); // DEBUG
+          modoConstrucao.preview.visible = false;
+        }
+        return;
+      }
+      
       if (!arrastando) return;
       var dx = ev.clientX - ultimoX;
       var dy = ev.clientY - ultimoY;
@@ -1046,7 +2701,93 @@
         arrastando = false;
         return;
       }
+      
+      // === MODO CONSTRUCAO: SOLTAR ITEM ===
+      if (modoConstrucao.ativo && modoConstrucao.arrastando && ev.button === 0) {
+        finalizarArrastarItem();
+        arrastando = false;
+        return;
+      }
+      
+      // === MODO DELETAR: CLICAR EM ITEM PARA DELETAR ===
+      if (modoConstrucao.ativo && modoConstrucao.modoDeletar && ev.button === 0 && !moveu) {
+        var r = palco.getBoundingClientRect();
+        mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+        mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+        ray.setFromCamera(mouse, camera);
+        
+        // Raycast nos itens posicionados
+        var itensParaDeletar = [];
+        modoConstrucao.itemsPosicionados.forEach(function(item) {
+          if (item.userData && item.userData.permanente) {
+            itensParaDeletar.push(item);
+          }
+        });
+        
+        if (itensParaDeletar.length > 0) {
+          var hits = ray.intersectObjects(itensParaDeletar, true);
+          if (hits.length > 0) {
+            // Encontrar o item pai (Group)
+            var objeto = hits[0].object;
+            while (objeto.parent && !objeto.userData.permanente) {
+              objeto = objeto.parent;
+            }
+            
+            if (objeto.userData && objeto.userData.permanente) {
+              console.log('Deletando item clicado:', objeto.userData.itemId); // DEBUG
+              deletarItemConstrucao(objeto);
+              arrastando = false;
+              return;
+            }
+          }
+        }
+        
+        arrastando = false;
+        return;
+      }
+      
+      // === BLOQUEAR AÇÕES NORMAIS SE MODO CONSTRUÇÃO ESTIVER ATIVO ===
+      if (modoConstrucao.ativo) {
+        // Mostrar mensagem apenas se clicou no mapa (não no inventário)
+        if (arrastando && !moveu) {
+          aviso('Use o inventário para colocar/deletar itens. Saia do modo construção para usar ferramentas.', true);
+        }
+        arrastando = false;
+        return;
+      }
+      
       if (arrastando && !moveu && ev.button === 0) {
+        // === MACHADO - CORTAR ARVORE ===
+        if (estado.ferramenta === 'machado') {
+          // Verificar se clicou em uma árvore
+          var r = palco.getBoundingClientRect();
+          mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+          mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+          ray.setFromCamera(mouse, camera);
+          
+          var arvoresDecorativas = [];
+          grupoDecoracoes.children.forEach(function(obj) {
+            if (obj.userData && obj.userData.podeCortar) {
+              arvoresDecorativas.push(obj);
+            }
+          });
+          
+          var hits = ray.intersectObjects(arvoresDecorativas, true);
+          if (hits.length > 0) {
+            var arvore = hits[0].object;
+            // Encontrar o grupo pai da árvore
+            while (arvore.parent && !arvore.userData.podeCortar) {
+              arvore = arvore.parent;
+            }
+            if (arvore.userData && arvore.userData.podeCortar) {
+              cortarArvore(arvore);
+              arrastando = false;
+              return;
+            }
+          }
+        }
+        
+        // === FERRAMENTAS NORMAIS ===
         var b = pegar(ev.clientX, ev.clientY);
         if (b) {
           selecionado = b;
@@ -1077,18 +2818,51 @@
 
     global.addEventListener('keydown', function (ev) {
       var emCampo = ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName || '');
+      
+      // ESC cancela arraste se estiver arrastando
+      if (ev.key === 'Escape') {
+        if (modoConstrucao.arrastando) {
+          cancelarArrasteItem();
+          return;
+        }
+        
+        var modal = ui('loja');
+        if (modal && !modal.hidden) {
+          modal.hidden = true;
+          return;
+        }
+        // ESC também fecha modo construção
+        if (modoConstrucao.ativo) {
+          desativarModoConstrucao();
+          return;
+        }
+        // ESC sai da camera livre
+        if (livre.ligado) {
+          desligarLivre();
+          return;
+        }
+      }
+      
       if (ev.key === 'h' || ev.key === 'H') {
         if (emCampo) return;
         ev.preventDefault();
         alternarLivre();
         return;
       }
-      if (ev.key === 'Escape' && livre.ligado) { desligarLivre(); return; }
-      if (!livre.ligado || emCampo) return;
+      
+      if (emCampo) return;
       var k = ev.key.toLowerCase();
       if (teclasDeMovimento(k)) {
         livre.teclas[nomearTecla(k)] = true;
         ev.preventDefault();
+      }
+    });
+    
+    // Botão direito do mouse cancela arraste
+    palco.addEventListener('contextmenu', function(ev) {
+      if (modoConstrucao.arrastando) {
+        ev.preventDefault();
+        cancelarArrasteItem();
       }
     });
 
@@ -1147,9 +2921,14 @@
         if (ev.target === modal) modal.hidden = true;
       });
     }
-    global.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && modal && !modal.hidden) modal.hidden = true;
-    });
+    
+    // Event listener para fechar modo construção
+    var fecharConstrucao = ui('fechar-construcao');
+    if (fecharConstrucao) {
+      fecharConstrucao.addEventListener('click', function() {
+        desativarModoConstrucao();
+      });
+    }
 
     var reiniciar = ui('reiniciar');
     if (reiniciar) {

@@ -188,9 +188,9 @@
       if (bloco.fertilidade < 0.15) return { ok: false, msg: 'Solo pobre demais. Adube antes.' };
       var cultura = D.CULTURAS[estado.semente];
       if (!cultura) return { ok: false, msg: 'Escolha uma semente.' };
-      if (cultura.nivel > estado.nivel) {
-        return { ok: false, msg: cultura.nome + ' desbloqueia no nivel ' + cultura.nivel + '.' };
-      }
+      
+      // VERIFICAÇÃO DE NÍVEL REMOVIDA
+      
       if ((estado.graos[estado.semente] || 0) <= 0) {
         return { ok: false, msg: 'Sem sementes de ' + cultura.nome + '.' };
       }
@@ -256,9 +256,9 @@
     if (!temItem(estado, id)) return { ok: false, msg: 'Voce nao tem esse equipamento.' };
     var modelo = D.EQUIPAMENTOS[id];
     if (!modelo) return { ok: false, msg: 'Equipamento desconhecido.' };
-    if (modelo.nivel > estado.nivel) {
-      return { ok: false, msg: modelo.nome + ' desbloqueia no nivel ' + modelo.nivel + '.' };
-    }
+    
+    // VERIFICAÇÃO DE NÍVEL REMOVIDA
+    
     if (bloco.bloqueado) return { ok: false, msg: 'Esse lote ainda nao e seu.' };
 
     if (modelo._passivo) {
@@ -337,11 +337,13 @@
   function comprarItem(estado, id) {
     var modelo = D.EQUIPAMENTOS[id] || D.ENERGIA[id];
     if (!modelo) return { ok: false, msg: 'Item desconhecido.' };
-    if (modelo.nivel > estado.nivel) {
-      return { ok: false, msg: modelo.nome + ' desbloqueia no nivel ' + modelo.nivel + '.' };
-    }
-    var repetivel = D.ENERGIA[id];
-    if (repetivel && !D.EQUIPAMENTOS[id] && estado.itens[id] && modelo.capacidade === undefined) {
+    
+    // VERIFICAÇÃO DE NÍVEL REMOVIDA - só precisa de dinheiro
+    
+    // PERMITIR COMPRAS MÚLTIPLAS: removida verificação que bloqueava compras repetidas
+    // Itens de ENERGIA podem ser comprados várias vezes com preço progressivo
+    var ehItemEnergia = !!D.ENERGIA[id];
+    if (ehItemEnergia && !D.EQUIPAMENTOS[id] && modelo.capacidade === undefined) {
       var extra = (estado.itens[id] || 0) + 1;
       var preco = Math.round(modelo.custo * (1 + extra * 0.35));
       if (estado.dinheiro < preco) return { ok: false, msg: 'Faltam $' + (preco - estado.dinheiro) + '.' };
@@ -349,6 +351,8 @@
       estado.itens[id] = extra;
       return { ok: true, msg: modelo.nome + ' comprado por $' + preco + '.', tipo: 'compra' };
     }
+    
+    // Todos os outros itens podem ser comprados múltiplas vezes pelo preço base
     if (estado.dinheiro < modelo.custo) {
       return { ok: false, msg: 'Faltam $' + (modelo.custo - estado.dinheiro) + '.' };
     }
