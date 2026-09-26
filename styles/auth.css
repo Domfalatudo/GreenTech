@@ -1,0 +1,568 @@
+:root {
+  --danger: #a4402f;
+  --warn: #c98a3c;
+  --ok: #6f9a4a;
+  --ring: color-mix(in srgb, var(--dark) 18%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --danger: #e89283;
+    --warn: #e0b064;
+    --ok: #a4cd7c;
+  }
+}
+
+:root[data-theme="dark"] {
+  --danger: #e89283;
+  --warn: #e0b064;
+  --ok: #a4cd7c;
+}
+
+.auth-main {
+  min-height: calc(100vh - var(--site-header-height, 76px));
+  display: grid;
+  place-items: start center;
+  padding: 56px 22px 96px;
+  background:
+    radial-gradient(
+      900px 420px at 50% -8%,
+      color-mix(in srgb, var(--pale) 55%, transparent),
+      transparent 70%
+    ),
+    var(--pale-soft);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 468px;
+  background: var(--white);
+  border: 1px solid var(--pale);
+  border-radius: 26px;
+  padding: 40px 36px 32px;
+  box-shadow: 0 28px 64px -46px color-mix(in srgb, var(--dark) 60%, transparent);
+}
+
+.auth-card.is-wide {
+  max-width: 560px;
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-card {
+  animation: auth-card-in 520ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.auth-head {
+  text-align: center;
+  margin-bottom: 26px;
+}
+
+.auth-head h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(1.9rem, 4vw, 2.4rem);
+  margin: 0 0 10px;
+  line-height: 1.15;
+}
+
+.auth-head h1 em {
+  font-family: var(--script);
+  font-style: normal;
+  color: var(--dark);
+  font-size: 1.12em;
+}
+
+.auth-head p {
+  color: var(--muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.sso-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.sso-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--pale);
+  background: var(--white);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
+}
+
+.sso-btn:hover:not([disabled]) {
+  border-color: var(--dark);
+  transform: translateY(-1px);
+}
+
+.sso-btn:active:not([disabled]) {
+  transform: translateY(0);
+}
+
+.sso-btn[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background: color-mix(in srgb, var(--pale-soft) 70%, transparent);
+}
+
+.sso-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.sso-name {
+  flex: 1;
+  text-align: left;
+}
+
+.sso-badge {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--pale);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin: 24px 0 20px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  background: var(--pale);
+  flex: 1;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 15px;
+}
+
+.field > label {
+  font-size: 0.87rem;
+  font-weight: 600;
+}
+
+.field .hint {
+  font-size: 0.77rem;
+  color: var(--muted);
+}
+
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field select {
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: 14px;
+  border: 1px solid var(--pale);
+  background: var(--pale-soft);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.field select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 14px) 50%;
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 40px;
+}
+
+.field input:focus,
+.field select:focus {
+  outline: none;
+  border-color: var(--dark);
+  background: var(--white);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+.field.is-invalid input,
+.field.is-invalid select {
+  border-color: var(--danger);
+}
+
+.field.is-invalid input:focus,
+.field.is-invalid select:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.field.is-invalid .check {
+  color: var(--danger);
+}
+
+.field-error {
+  font-size: 0.77rem;
+  color: var(--danger);
+  min-height: 0;
+  display: none;
+}
+
+.field.is-invalid .field-error {
+  display: block;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.pwd {
+  position: relative;
+}
+
+.pwd input {
+  padding-right: 74px !important;
+}
+
+.pwd-toggle {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 9px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.pwd-toggle:hover {
+  color: var(--dark);
+}
+
+.meter {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.meter-bars {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+
+.meter-bars i {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--pale);
+  transition: background 200ms ease;
+}
+
+.meter-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.meter[data-level="1"] .meter-bars i:nth-child(-n + 1) {
+  background: var(--danger);
+}
+.meter[data-level="2"] .meter-bars i:nth-child(-n + 2) {
+  background: var(--warn);
+}
+.meter[data-level="3"] .meter-bars i:nth-child(-n + 3) {
+  background: var(--ok);
+}
+.meter[data-level="4"] .meter-bars i {
+  background: var(--dark);
+}
+
+.auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 2px 0 20px;
+  font-size: 0.85rem;
+}
+
+.check {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  line-height: 1.45;
+}
+
+.check input {
+  width: 17px;
+  height: 17px;
+  margin: 1px 0 0;
+  accent-color: var(--dark);
+  flex-shrink: 0;
+}
+
+.check a {
+  color: var(--dark);
+}
+
+.fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+}
+
+.fieldset > legend {
+  font-size: 0.87rem;
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 9px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+}
+
+.chip input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.chip span {
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--pale);
+  font-size: 0.84rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background 150ms ease;
+}
+
+.chip:hover span {
+  border-color: var(--dark);
+}
+
+.chip input:checked + span {
+  border-color: var(--dark);
+  color: var(--dark);
+  background: color-mix(in srgb, var(--dark) 9%, transparent);
+}
+
+.chip input:focus-visible + span {
+  outline: 2px solid var(--dark);
+  outline-offset: 2px;
+}
+
+.legend-note {
+  font-size: 0.77rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+.auth-submit {
+  width: 100%;
+  padding: 15px 20px;
+  border-radius: 999px;
+  border: 0;
+  background: var(--dark);
+  color: var(--pale);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+.auth-submit:hover {
+  transform: translateY(-2px);
+}
+.auth-submit:active {
+  transform: translateY(0);
+}
+
+.auth-submit[aria-busy="true"] {
+  opacity: 0.65;
+  cursor: progress;
+  transform: none;
+}
+
+.auth-status {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border-radius: 14px;
+  font-size: 0.87rem;
+  display: none;
+}
+
+.auth-status.is-visible {
+  display: block;
+}
+
+.auth-status[data-tone="error"] {
+  background: color-mix(in srgb, var(--danger) 11%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent);
+  color: var(--danger);
+}
+
+.auth-status[data-tone="ok"] {
+  background: color-mix(in srgb, var(--dark) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dark) 26%, transparent);
+  color: var(--dark);
+}
+
+.auth-status[data-tone="info"] {
+  background: var(--pale-soft);
+  border: 1px solid var(--pale);
+  color: var(--muted);
+}
+
+.auth-switch {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.auth-switch a {
+  color: var(--dark);
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+
+.auth-note {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--pale);
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.auth-note strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.auth-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  background: var(--pale-soft);
+  border: 1px solid var(--pale);
+  border-radius: 6px;
+  padding: 1px 5px;
+}
+
+footer.site {
+  border-top: 1px solid var(--pale);
+  padding: 40px 32px;
+}
+
+.footer-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+
+.footer-inner p {
+  color: var(--muted);
+  font-size: 0.88rem;
+  max-width: 40ch;
+  margin: 8px 0 0;
+}
+
+@media (max-width: 760px) {
+  .auth-main {
+    padding: 34px 18px 72px;
+  }
+  .auth-card {
+    padding: 30px 22px 26px;
+    border-radius: 22px;
+  }
+  .field-row {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  nav.links {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card {
+    animation: none;
+  }
+  .sso-btn,
+  .auth-submit,
+  .chip span,
+  .field input,
+  .meter-bars i {
+    transition: none;
+  }
+  .sso-btn:hover,
+  .auth-submit:hover {
+    transform: none;
+  }
+}

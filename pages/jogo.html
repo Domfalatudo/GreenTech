@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Raiz — o Jogo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=Beau+Rivage&family=Karla:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/textures.js"></script>
+    <style>
+      :root {
+        box-sizing: border-box;
+        --white: #ffffff;
+        --pale: #dcefdd;
+        --pale-soft: #eef8ee;
+        --dark: #16332a;
+        --dark-2: #0e2019;
+        --text: #17271f;
+        --muted: #5c7266;
+        --serif: "Fraunces", serif;
+        --script: "Beau Rivage", cursive;
+        --sans: "Karla", sans-serif;
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: inherit;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--white);
+        color: var(--text);
+        font-family: var(--sans);
+        overflow: hidden;
+      }
+
+      header.site {
+        position: relative;
+        z-index: 30;
+        background: color-mix(in srgb, var(--white) 90%, transparent);
+        backdrop-filter: blur(10px);
+      }
+      .nav-inner {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 28px;
+      }
+      .logo {
+        font-family: var(--script);
+        font-size: 1.8rem;
+        color: var(--dark);
+        text-decoration: none;
+      }
+      nav.links {
+        display: flex;
+        gap: 28px;
+      }
+      nav.links a {
+        color: var(--text);
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+      nav.links a:hover {
+        color: var(--dark);
+      }
+
+      #stage {
+        position: absolute;
+        inset: 0;
+        top: var(--site-header-height);
+      }
+      #stage canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+        touch-action: none;
+      }
+
+      .topbar {
+        position: absolute;
+        z-index: 22;
+        top: calc(var(--site-header-height) + 12px);
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .topbar .stat {
+        background: color-mix(in srgb, var(--white) 92%, transparent);
+        border: 1px solid var(--pale);
+        border-radius: 14px;
+        padding: 8px 14px;
+        backdrop-filter: blur(6px);
+        min-width: 88px;
+        text-align: center;
+      }
+      .topbar .k {
+        display: block;
+        font-size: 0.66rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      .topbar .v {
+        display: block;
+        font-family: var(--serif);
+        font-size: 1.05rem;
+        font-weight: 500;
+        color: var(--text);
+        line-height: 1.2;
+      }
+      .topbar .v.bom {
+        color: #3f7a4a;
+      }
+      .topbar .v.meio {
+        color: #b07f2a;
+      }
+      .topbar .v.ruim {
+        color: #a4402f;
+      }
+
+      .painel {
+        position: absolute;
+        z-index: 0.5;
+        left: 24px;
+        top: calc(var(--site-header-height) + 76px);
+        width: 300px;
+        background: color-mix(in srgb, var(--white) 93%, transparent);
+        border: 1px solid var(--pale);
+        border-radius: 18px;
+        padding: 20px;
+        margin-top: -15px;
+        backdrop-filter: blur(6px);
+        max-height: calc(100vh - var(--site-header-height) - 120px);
+        overflow-y: auto;
+
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+
+      .painel:-webkit-scrollbar {
+        display: none;
+      }
+      
+      .painel {
+        -ms-overflow-style: none;
+      }
+
+
+      .painel h2 {
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: 1.05rem;
+        margin: 0 0 14px;
+      }
+      .ferramentas {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .ferramentas button {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        border: 1px solid var(--pale);
+        background: var(--white);
+        border-radius: 11px;
+        padding: 9px 11px;
+        cursor: pointer;
+        font-family: var(--sans);
+        font-size: 0.82rem;
+        color: var(--text);
+        text-align: left;
+      }
+      .ferramentas button:hover {
+        border-color: var(--dark);
+      }
+      .ferramentas button.ativo {
+        border-color: var(--dark);
+        background: var(--pale-soft);
+      }
+      .ferramentas button .marca {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .painel label.sel {
+        display: block;
+        font-size: 0.76rem;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      .painel select,
+      .painel .acao-loja {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--pale);
+        background: var(--white);
+        color: var(--text);
+        font: inherit;
+        font-size: 0.85rem;
+      }
+      .acao-loja {
+        cursor: pointer;
+        background: var(--dark);
+        color: var(--pale);
+        border-color: var(--dark);
+        font-weight: 600;
+      }
+      .acao-rec {
+        width: 100%;
+        margin-top: 8px;
+        padding: 9px;
+        border-radius: 12px;
+        border: 1px solid var(--pale);
+        background: transparent;
+        color: var(--muted);
+        font: inherit;
+        font-size: 0.76rem;
+        cursor: pointer;
+      }
+      .acao-rec:hover {
+        color: var(--danger);
+        border-color: var(--danger);
+      }
+
+      .inspetor {
+        position: absolute;
+        z-index: 22;
+        right: 24px;
+        top: calc(var(--site-header-height) + 76px);
+        width: 236px;
+        background: color-mix(in srgb, var(--white) 93%, transparent);
+        border: 1px solid var(--pale);
+        border-radius: 18px;
+        padding: 20px;
+        backdrop-filter: blur(6px);
+      }
+      .inspetor[hidden] {
+        display: none;
+      }
+      .inspetor h3 {
+        font-family: var(--serif);
+        font-weight: 500;
+        font-size: 1rem;
+        margin: 0 0 4px;
+      }
+      .inspetor .coords {
+        color: var(--muted);
+        font-size: 0.72rem;
+        margin: 0 0 14px;
+      }
+      .medidor {
+        margin-bottom: 12px;
+      }
+      .medidor .rot {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.74rem;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .medidor .barra {
+        height: 6px;
+        border-radius: 999px;
+        background: var(--pale);
+        overflow: hidden;
+      }
+      .medidor .barra span {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.35s ease;
+      }
+      .medidor.umidade .barra span {
+        background: #4a90a8;
+      }
+      .medidor.fertilidade .barra span {
+        background: #6f9a4a;
+      }
+      .medidor.poluicao .barra span {
+        background: #a4402f;
+      }
+      .inspetor .selo {
+        display: inline-block;
+        font-size: 0.7rem;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--pale);
+        color: var(--muted);
+        margin-bottom: 12px;
+      }
+
+      .modal {
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--dark) 34%, transparent);
+        backdrop-filter: blur(3px);
+        padding: 24px;
+      }
+      .modal[hidden] {
+        display: none;
+      }
+      .modal-card {
+        width: 100%;
+        max-width: 720px;
+        max-height: 78vh;
+        overflow-y: auto;
+        background: var(--white);
+        border-radius: 22px;
+        padding: 28px;
+        border: 1px solid var(--pale);
+      }
+      .abas {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 22px;
+      }
+      .abas button {
+        border: 1px solid var(--pale);
+        background: var(--white);
+        border-radius: 999px;
+        padding: 8px 16px;
+        font: inherit;
+        font-size: 0.82rem;
+        color: var(--muted);
+        cursor: pointer;
+      }
+      .abas button.ativo {
+        border-color: var(--dark);
+        color: var(--dark);
+        background: var(--pale-soft);
+        font-weight: 600;
+      }
+      .lista {
+        display: grid;
+        gap: 10px;
+      }
+      .cartao {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        border: 1px solid var(--pale);
+        border-radius: 14px;
+        padding: 14px 16px;
+      }
+      .cartao .txt {
+        flex: 1;
+      }
+      .cartao h4 {
+        margin: 0 0 3px;
+        font-size: 0.92rem;
+        font-weight: 600;
+      }
+      .cartao p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.79rem;
+      }
+      .cartao .nivel {
+        display: inline-block;
+        font-size: 0.68rem;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .cartao button {
+        border: 1px solid var(--dark);
+        background: var(--dark);
+        color: var(--pale);
+        border-radius: 999px;
+        padding: 8px 16px;
+        font: inherit;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .cartao button:disabled {
+        background: var(--pale);
+        border-color: var(--pale);
+        color: var(--muted);
+        cursor: not-allowed;
+      }
+      .cartao .preco {
+        display: block;
+        font-family: var(--serif);
+        color: var(--text);
+        margin-top: 4px;
+      }
+
+      .mapa-lotes {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+      }
+      .lote-btn {
+        aspect-ratio: 1;
+        border-radius: 12px;
+        border: 1px solid var(--pale);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.66rem;
+        color: var(--text);
+        padding: 4px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+      .lote-btn.seu {
+        background: color-mix(in srgb, var(--dark) 16%, transparent);
+        border-color: var(--dark);
+        font-weight: 600;
+      }
+      .lote-btn.vizinho {
+        background: var(--pale-soft);
+      }
+      .lote-btn.perto {
+        border-color: var(--dark);
+        border-style: dashed;
+      }
+      .lote-btn .c {
+        font-size: 0.95rem;
+      }
+
+      .toast {
+        position: absolute;
+        z-index: 50;
+        left: 50%;
+        bottom: 28px;
+        transform: translateX(-50%);
+        background: var(--dark);
+        color: var(--pale);
+        padding: 12px 20px;
+        border-radius: 999px;
+        font-size: 0.86rem;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.25s ease,
+          transform 0.25s ease;
+        max-width: 80vw;
+        text-align: center;
+      }
+      .toast.visivel {
+        opacity: 1;
+        transform: translateX(-50%) translateY(-6px);
+      }
+      .toast.erro {
+        background: #8d3729;
+        color: #fff;
+      }
+
+      .hint {
+        position: absolute;
+        z-index: 10;
+        bottom: 1px;
+        left: 24px;
+        color: var(--muted);
+        font-size: 0.76rem;
+        background: color-mix(in srgb, var(--white) 90%, transparent);
+        padding: 7px 14px;
+        border-radius: 999px;
+      }
+
+      @media (max-width: 900px) {
+        .inspetor {
+          display: none;
+        }
+        .painel {
+          width: 200px;
+          left: 14px;
+          padding: 14px;
+        }
+        .topbar {
+          max-width: 96vw;
+        }
+        .topbar .stat {
+          min-width: 70px;
+          padding: 6px 10px;
+        }
+        .topbar .v {
+          font-size: 0.92rem;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .toast,
+        .medidor .barra span {
+          transition: none;
+        }
+      }
+    </style>
+    <link rel="stylesheet" href="../styles/header.css" />
+  </head>
+  <body>
+    <header class="site">
+      <div class="nav-inner">
+        <a class="logo" href="index.html#top">Raiz</a>
+        <nav class="links" aria-label="Navegação principal">
+          <a href="index.html#top">Início</a>
+          <a href="creators.html">Creators</a>
+          <a href="conteudo-1.html">Conteúdo</a>
+          <a href="jogo.html">Jogo</a>
+        </nav>
+        <div class="account" data-account></div>
+      </div>
+    </header>
+
+    <div id="stage"></div>
+
+    <div class="mira" data-ui="mira" hidden aria-hidden="true">
+      <span>
+        camera livre &middot; mouse + botao esquerdo para olhar &middot;
+        W A S D move &middot; espaco sobe &middot; shift desce &middot;
+        roda avanca &middot; H ou Esc sai
+      </span>
+    </div>
+
+    <div class="topbar" aria-label="Recursos">
+      <div class="stat">
+        <span class="k">Dinheiro</span
+        ><span class="v" data-ui="dinheiro">$0</span>
+      </div>
+      <div class="stat">
+        <span class="k">Energia</span
+        ><span class="v" data-ui="energia">0/0</span>
+      </div>
+      <div class="stat">
+        <span class="k">Agua</span><span class="v" data-ui="agua">0</span>
+      </div>
+      <div class="stat">
+        <span class="k">Nivel</span><span class="v" data-ui="nivel">1</span>
+      </div>
+      <div class="stat">
+        <span class="k">XP</span><span class="v" data-ui="xp">0</span>
+      </div>
+      <div class="stat">
+        <span class="k">Pegada</span><span class="v" data-ui="pegada">0</span>
+      </div>
+      <div class="stat">
+        <span class="k">Tempo</span><span class="v" data-ui="tempo">-</span>
+      </div>
+      <div class="stat">
+        <span class="k">Clima</span><span class="v" data-ui="clima">-</span>
+      </div>
+    </div>
+
+    <aside class="painel">
+      <h2>Ferramentas</h2>
+      <div class="ferramentas" data-ui="ferramentas"></div>
+      <label class="sel" for="sel-semente">Semente na mao</label>
+      <select id="sel-semente" data-ui="semente"></select>
+      <div style="height: 12px"></div>
+      <button class="acao-loja" type="button" data-ui="abrir-loja">
+        Loja e melhorias
+      </button>
+      <button class="acao-rec" type="button" data-ui="reiniciar">
+        Recomecar a fazenda
+      </button>
+    </aside>
+
+    <aside class="inspetor" data-ui="inspetor" hidden aria-live="polite">
+      <h3 data-ui="insp-titulo">Bloco</h3>
+      <p class="coords" data-ui="insp-coords">-</p>
+      <span class="selo" data-ui="insp-selo">-</span>
+      <div class="medidor umidade">
+        <div class="rot">
+          <span>Umidade</span><span data-ui="insp-umidade">0%</span>
+        </div>
+        <div class="barra"><span data-ui="bar-umidade"></span></div>
+      </div>
+      <div class="medidor fertilidade">
+        <div class="rot">
+          <span>Fertilidade</span><span data-ui="insp-fert">0%</span>
+        </div>
+        <div class="barra"><span data-ui="bar-fert"></span></div>
+      </div>
+      <div class="medidor poluicao">
+        <div class="rot">
+          <span>Poluicao</span><span data-ui="insp-pol">0%</span>
+        </div>
+        <div class="barra"><span data-ui="bar-pol"></span></div>
+      </div>
+      <p class="coords" data-ui="insp-cultivo" style="margin: 10px 0 0">-</p>
+    </aside>
+
+    <div class="modal" data-ui="loja" hidden>
+      <div class="modal-card">
+        <div class="abas">
+          <button type="button" data-aba="equipamentos">Equipamentos</button>
+          <button type="button" data-aba="energia">Energia</button>
+          <button type="button" data-aba="sementes">Sementes</button>
+          <button type="button" data-aba="terreno">Terreno</button>
+        </div>
+        <div data-ui="loja-conteudo"></div>
+      </div>
+    </div>
+
+    <p class="toast" data-ui="toast" role="status" aria-live="polite"></p>
+    <p class="hint">
+      arraste para girar &middot; role para aproximar &middot; clique num bloco para
+      usar a ferramenta &middot; <strong>H</strong> liga a camera livre (WASD + mouse)
+    </p>
+
+    <script src="../js/firebase-config.js"></script>
+    <script src="../js/header.js"></script>
+    <script type="module" src="../js/header-auth.js"></script>
+    <script src="../js/game-data.js"></script>
+    <script src="../js/game-core.js"></script>
+    <script src="../js/game-view.js"></script>
+  </body>
+</html>

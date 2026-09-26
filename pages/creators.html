@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Raiz — Creators</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=Beau+Rivage&family=Karla:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    --white: #ffffff; --pale: #dcefdd; --pale-soft: #eef8ee;
+    --dark: #16332a; --dark-2: #0e2019; --text: #17271f; --muted: #5c7266;
+    --serif: "Fraunces", serif; --script: "Beau Rivage", cursive; --sans: "Karla", sans-serif;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { margin: 0; background: var(--white); color: var(--text); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --white: #0e1913; --pale: #17281f; --pale-soft: #142219; --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b; }
+  }
+  :root[data-theme="dark"] { --white: #0e1913; --pale: #17281f; --pale-soft: #142219; --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b; }
+
+  header.site { position: sticky; top: env(safe-area-inset-top, 0px); background: color-mix(in srgb, var(--white) 88%, transparent); backdrop-filter: blur(10px); z-index: 20; }
+  .nav-inner { display: flex; align-items: center; justify-content: space-between; padding: 22px 32px; max-width: 1120px; margin: 0 auto; }
+  .logo { font-family: var(--script); font-size: 2rem; color: var(--dark); text-decoration: none; }
+  nav.links { display: flex; gap: 36px; }
+  nav.links a { color: var(--text); text-decoration: none; font-size: 0.95rem; font-weight: 500; }
+  nav.links a:hover, nav.links a:focus-visible { color: var(--dark); }
+  a:focus-visible { outline: 2px solid var(--dark); outline-offset: 3px; }
+
+  .intro { padding: 96px 32px 80px; max-width: 800px; margin: 0 auto; text-align: center; }
+  .intro h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(2.2rem, 4vw, 3.1rem); margin: 0 0 22px; }
+  .intro h1 em { font-family: var(--script); font-style: normal; color: var(--dark); font-size: 1.15em; }
+  .intro p { color: var(--muted); font-size: 1.1rem; max-width: 56ch; margin: 0 auto; }
+
+  .group { padding: 0 32px 110px; max-width: 1120px; margin: 0 auto; }
+  .group-head { display: flex; align-items: baseline; gap: 18px; margin-bottom: 40px; }
+  .group-head h2 { font-family: var(--serif); font-weight: 400; font-size: 1.5rem; margin: 0; }
+  .group-head span { color: var(--muted); font-size: 0.9rem; }
+  .group-line { height: 1px; background: var(--pale); flex: 1; }
+
+  .creator-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; perspective: 1100px; }
+  .creator-card { background: var(--pale-soft); border-radius: 22px; padding: 36px 34px; display: flex; flex-direction: column; gap: 18px; transform: rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(var(--card-depth, 0px)); transform-style: preserve-3d; transition: transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1); }
+  @keyframes creator-card-reveal {
+    from { opacity: 0; translate: 0 18px; }
+    to { opacity: 1; translate: 0 0; }
+  }
+  @keyframes creator-card-float {
+    0%, 100% { translate: 0 0; }
+    50% { translate: 0 -5px; }
+  }
+  html.scroll-reveal-ready .creator-card:not(.is-visible) { opacity: 0; }
+  html.scroll-reveal-ready .creator-card.is-visible { animation: creator-card-reveal 620ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay, 0ms) both, creator-card-float 5.8s ease-in-out calc(var(--reveal-delay, 0ms) + 620ms) infinite; }
+  .cc-top { display: flex; align-items: center; gap: 18px; }
+  .cc-mark { width: 54px; height: 54px; border-radius: 50%; background: var(--dark); display: grid; place-items: center; flex-shrink: 0; }
+  .cc-mark span { font-family: var(--serif); color: var(--pale); font-size: 1.15rem; }
+  .cc-name { font-family: var(--serif); font-weight: 500; font-size: 1.3rem; margin: 0; }
+  .cc-role { color: var(--muted); font-size: 0.88rem; margin: 2px 0 0; }
+  .cc-bio { color: var(--text); font-size: 0.98rem; margin: 0; }
+  .cc-focus { display: flex; flex-wrap: wrap; gap: 10px; }
+  .cc-focus span { border: 1px solid var(--dark); color: var(--dark); font-size: 0.78rem; padding: 6px 14px; border-radius: 999px; }
+  .cc-quote { font-family: var(--serif); font-style: normal; color: var(--dark); font-size: 1rem; border-left: 2px solid var(--dark); padding-left: 16px; margin: 4px 0 0; }
+
+  footer.site { border-top: 1px solid var(--pale); padding: 56px 32px; }
+  .footer-inner { max-width: 1120px; margin: 0 auto; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 32px; }
+  .footer-inner .logo { display: block; margin-bottom: 10px; }
+  .footer-inner p { color: var(--muted); font-size: 0.9rem; max-width: 34ch; margin: 0; }
+  .footer-links { display: flex; gap: 48px; flex-wrap: wrap; }
+  .footer-links div { display: flex; flex-direction: column; gap: 10px; }
+  .footer-links span.label { color: var(--muted); font-size: 0.8rem; margin-bottom: 4px; }
+  .footer-links a { color: var(--text); text-decoration: none; font-size: 0.95rem; }
+  .footer-links a:hover { color: var(--dark); }
+
+  @media (max-width: 760px) {
+    .creator-grid { grid-template-columns: 1fr; }
+    nav.links { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.scroll-reveal-ready .creator-card { opacity: 1; animation: none; transform: none; translate: none; transition: none; }
+  }
+</style>
+<link rel="stylesheet" href="../styles/header.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="nav-inner">
+    <a class="logo" href="index.html#top">Raiz</a>
+    <nav class="links" aria-label="Navegação principal">
+      <a href="index.html#top">Início</a>
+      <a href="creators.html">Creators</a>
+      <a href="conteudo-1.html">Conteúdo</a>
+      <a href="jogo.html">Jogo</a>
+    </nav>
+    <div class="account" data-account></div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="intro">
+    <h1>As pessoas por trás da <em>raiz</em></h1>
+    <p>Um time pequeno, com áreas diferentes e o mesmo compromisso: fazer tecnologia que respeita seus limites e os do planeta.</p>
+  </section>
+
+  <section class="group">
+    <div class="group-head"><h2>Desenvolvimento</h2><span>DEV</span><div class="group-line"></div></div>
+    <div class="creator-grid">
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>SB</span></div>
+          <div><h3 class="cc-name">Samuel Borba</h3><p class="cc-role">Desenvolvedor</p></div>
+        </div>
+        <p class="cc-bio">Responsável pela arquitetura do painel de métricas do Raiz, cuidando para que cada integração seja leve e não vire, ela mesma, uma nova fonte de consumo desnecessário.</p>
+        <div class="cc-focus"><span>Backend</span><span>Performance</span><span>APIs abertas</span></div>
+        <p class="cc-quote">Otimizar código também é uma forma de cuidar do planeta.</p>
+      </div>
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>DE</span></div>
+          <div><h3 class="cc-name">Dominic Enzo</h3><p class="cc-role">Desenvolvedor</p></div>
+        </div>
+        <p class="cc-bio">Constrói as integrações que conectam infraestruturas existentes ao Raiz sem exigir migração, e mantém a base de dados aberta usada pela comunidade de creators.</p>
+        <div class="cc-focus"><span>Integrações</span><span>Dados abertos</span><span>Automação</span></div>
+        <p class="cc-quote">A melhor ferramenta é a que se encaixa no que você já usa.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <div class="group-head"><h2>Design</h2><span>UX / UI</span><div class="group-line"></div></div>
+    <div class="creator-grid">
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>GA</span></div>
+          <div><h3 class="cc-name">Gabriela Alves</h3><p class="cc-role">Designer</p></div>
+        </div>
+        <p class="cc-bio">Desenhou a identidade visual do Raiz, incluindo a paleta em tons de verde e a forma como os dados de impacto ambiental são traduzidos em elementos simples de entender.</p>
+        <div class="cc-focus"><span>Identidade visual</span><span>Sistema de design</span><span>Ilustração</span></div>
+        <p class="cc-quote">Um bom dado só serve se alguém entender de relance.</p>
+      </div>
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>E</span></div>
+          <div><h3 class="cc-name">Emilly</h3><p class="cc-role">Designer</p></div>
+        </div>
+        <p class="cc-bio">Cuida da experiência do painel e do jogo, testando fluxos com usuários reais para garantir que aprender sobre sustentabilidade seja simples, não didático demais.</p>
+        <div class="cc-focus"><span>UX Research</span><span>Protótipos</span><span>Acessibilidade</span></div>
+        <p class="cc-quote">Se a pessoa precisa de manual, o design falhou.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="group">
+    <div class="group-head"><h2>Pesquisa</h2><span>DADOS</span><div class="group-line"></div></div>
+    <div class="creator-grid">
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>IC</span></div>
+          <div><h3 class="cc-name">Isabela Costa</h3><p class="cc-role">Pesquisadora</p></div>
+        </div>
+        <p class="cc-bio">Levanta e valida as fontes públicas de dados ambientais usadas no painel, além de conduzir os estudos de caso publicados junto à comunidade de creators.</p>
+        <div class="cc-focus"><span>Fontes de dados</span><span>Metodologia</span><span>Estudos de caso</span></div>
+        <p class="cc-quote">Um número sem fonte é só uma opinião com casa decimal.</p>
+      </div>
+      <div class="creator-card">
+        <div class="cc-top">
+          <div class="cc-mark"><span>EB</span></div>
+          <div><h3 class="cc-name">Eduarda Barros</h3><p class="cc-role">Pesquisadora</p></div>
+        </div>
+        <p class="cc-bio">Investiga o ciclo de vida de hardware e políticas de reciclagem eletrônica, traduzindo relatórios técnicos densos em conteúdo acessível para o site e o jogo.</p>
+        <div class="cc-focus"><span>Ciclo de vida</span><span>Economia circular</span><span>Divulgação científica</span></div>
+        <p class="cc-quote">Todo dispositivo tem uma vida depois do lixo, se alguém cuidar.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="footer-inner">
+    <div>
+      <a class="logo" id="home-link-bottom" href="index.html">Raiz</a>
+      <p>Tecnologia sustentável, medida e compartilhada em código aberto.</p>
+    </div>
+    <div class="footer-links">
+      <div>
+        <span class="label">Explorar</span>
+        <a id="home-link-2" href="index.html">Início</a>
+        <a href="#top">Creators</a>
+        <a href="index.html#jogo">Jogo</a>
+        <a href="conteudo-1.html">Conteúdo</a>
+      </div>
+      <div>
+        <span class="label">Projeto</span>
+        <a href="#">Código aberto</a>
+        <a href="#">Contato</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var cards = document.querySelectorAll('.creator-card');
+  if (!cards.length) return;
+
+  cards.forEach(function (card) {
+    card.addEventListener('pointermove', function (event) {
+      if (event.pointerType === 'touch') return;
+      var bounds = card.getBoundingClientRect();
+      var pointerX = (event.clientX - bounds.left) / bounds.width * 2 - 1;
+      var pointerY = (event.clientY - bounds.top) / bounds.height * 2 - 1;
+      var distance = Math.min(1, Math.hypot(pointerX, pointerY) / Math.SQRT2);
+
+      card.style.setProperty('--tilt-x', (pointerX * 4.5).toFixed(2) + 'deg');
+      card.style.setProperty('--tilt-y', (-pointerY * 4.5).toFixed(2) + 'deg');
+      card.style.setProperty('--card-depth', ((1 - distance) * 6).toFixed(1) + 'px');
+    });
+    card.addEventListener('pointerleave', function () {
+      card.style.setProperty('--tilt-x', '0deg');
+      card.style.setProperty('--tilt-y', '0deg');
+      card.style.setProperty('--card-depth', '0px');
+    });
+  });
+
+  if (!('IntersectionObserver' in window)) return;
+  document.documentElement.classList.add('scroll-reveal-ready');
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) revealCard(entry.target);
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -36px 0px' });
+
+  function revealCard(card) {
+    if (card.classList.contains('is-visible')) return;
+    card.classList.add('is-visible');
+    observer.unobserve(card);
+  }
+
+  function revealPassedCards() {
+    cards.forEach(function (card) {
+      if (card.getBoundingClientRect().bottom < 0) revealCard(card);
+    });
+  }
+
+  window.addEventListener('scroll', revealPassedCards, { passive: true });
+  cards.forEach(function (card, index) {
+    card.style.setProperty('--reveal-delay', (index % 2) * 110 + 'ms');
+    observer.observe(card);
+  });
+  revealPassedCards();
+})();
+</script>
+
+<script src="../js/firebase-config.js"></script>
+<script src="../js/header.js"></script>
+<script type="module" src="../js/header-auth.js"></script>
+</body>
+</html>

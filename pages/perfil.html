@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Raiz — Meu perfil</title>
+<meta name="description" content="Seus dados na Raiz: perfil, interesses e preferências.">
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600&family=Beau+Rivage&family=Karla:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    box-sizing: border-box;
+    --white: #ffffff; --pale: #dcefdd; --pale-soft: #eef8ee;
+    --dark: #16332a; --dark-2: #0e2019; --text: #17271f; --muted: #5c7266;
+    --serif: "Fraunces", serif; --script: "Beau Rivage", cursive; --sans: "Karla", sans-serif;
+    --danger: #a4402f;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  body { margin: 0; background: var(--white); color: var(--text); font-family: var(--sans); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --white: #0e1913; --pale: #17281f; --pale-soft: #142219; --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b; --danger: #e89283; }
+  }
+  :root[data-theme="dark"] { --white: #0e1913; --pale: #17281f; --pale-soft: #142219; --dark: #bfe6c6; --dark-2: #dcefdd; --text: #eaf3ec; --muted: #93a89b; --danger: #e89283; }
+  a:focus-visible { outline: 2px solid var(--dark); outline-offset: 3px; }
+</style>
+<link rel="stylesheet" href="../styles/header.css">
+<link rel="stylesheet" href="../styles/perfil.css">
+</head>
+<body>
+
+<header class="site">
+  <div class="nav-inner">
+    <a class="logo" href="index.html#top">Raiz</a>
+    <nav class="links" aria-label="Navegação principal">
+      <a href="index.html#top">Início</a>
+      <a href="creators.html">Creators</a>
+      <a href="conteudo-1.html">Conteúdo</a>
+      <a href="jogo.html">Jogo</a>
+    </nav>
+    <div class="account" data-account></div>
+  </div>
+</header>
+
+<main class="perfil-main">
+  <div class="perfil-wrap" data-perfil="carregando">
+
+    <section class="perfil-card is-loading" data-estado="carregando" aria-live="polite">
+      <p class="perfil-aviso">Carregando seus dados…</p>
+    </section>
+
+    <section class="perfil-card" data-estado="deslogado" hidden>
+      <h1>Você ainda não entrou</h1>
+      <p>Esta página mostra os dados da sua conta. Faça login para continuar.</p>
+      <p class="perfil-acoes">
+        <a class="perfil-btn" href="login.html">Entrar</a>
+        <a class="perfil-btn perfil-btn-suave" href="cadastro.html">Criar conta</a>
+      </p>
+    </section>
+
+    <section class="perfil-card" data-estado="erro" hidden>
+      <h1>Não deu para carregar</h1>
+      <p data-perfil-erro>Verifique sua conexão e tente de novo.</p>
+      <p class="perfil-acoes">
+        <button class="perfil-btn" type="button" data-perfil-tentar>Tentar de novo</button>
+      </p>
+    </section>
+
+    <section class="perfil-card" data-estado="logado" hidden>
+      <header class="perfil-topo">
+        <span class="perfil-foto" data-perfil-foto aria-hidden="true"></span>
+        <div>
+          <h1 data-perfil-nome>—</h1>
+          <p class="perfil-email" data-perfil-email>—</p>
+          <p class="perfil-tags">
+            <span class="perfil-tag" data-perfil-provedor>—</span>
+            <span class="perfil-tag perfil-tag-verificado" data-perfil-verificado hidden>e-mail verificado</span>
+          </p>
+        </div>
+      </header>
+
+      <dl class="perfil-lista">
+        <div class="perfil-item">
+          <dt>Perfil</dt>
+          <dd data-perfil-tipo>Não informado</dd>
+        </div>
+        <div class="perfil-item">
+          <dt>Cidade</dt>
+          <dd data-perfil-cidade>Não informada</dd>
+        </div>
+        <div class="perfil-item">
+          <dt>Interesses</dt>
+          <dd data-perfil-interesses>—</dd>
+        </div>
+        <div class="perfil-item">
+          <dt>Resumo mensal</dt>
+          <dd data-perfil-newsletter>—</dd>
+        </div>
+        <div class="perfil-item">
+          <dt>Conta criada em</dt>
+          <dd data-perfil-criada>—</dd>
+        </div>
+      </dl>
+
+      <p class="perfil-acoes">
+        <button class="perfil-btn perfil-btn-perigo" type="button" data-perfil-sair>Sair da conta</button>
+        <a class="perfil-btn perfil-btn-suave" href="conteudo-1.html">Continuar lendo</a>
+      </p>
+
+      <p class="perfil-nota" data-perfil-nota hidden></p>
+    </section>
+  </div>
+</main>
+
+<script src="../js/firebase-config.js"></script>
+<script src="../js/header.js"></script>
+<script type="module" src="../js/header-auth.js"></script>
+<script type="module" src="../js/perfil.js"></script>
+</body>
+</html>

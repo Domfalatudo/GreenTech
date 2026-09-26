@@ -1,0 +1,351 @@
+:root {
+  --site-header-height: 76px;
+}
+
+@keyframes site-header-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes site-nav-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+header.site {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 30;
+  background: color-mix(in srgb, var(--white) 88%, transparent);
+  backdrop-filter: blur(10px);
+  animation: site-header-enter 480ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+}
+
+.nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: var(--site-header-height);
+  padding: 16px 32px;
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.logo {
+  flex-shrink: 0;
+  font-family: var(--script);
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--dark);
+  text-decoration: none;
+}
+
+nav.links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 28px;
+}
+
+nav.links a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1;
+  transition:
+    color 160ms ease,
+    transform 160ms ease;
+  animation: site-nav-enter 360ms ease-out both;
+}
+
+nav.links a:nth-child(1) {
+  animation-delay: 80ms;
+}
+nav.links a:nth-child(2) {
+  animation-delay: 130ms;
+}
+nav.links a:nth-child(3) {
+  animation-delay: 180ms;
+}
+nav.links a:nth-child(4) {
+  animation-delay: 230ms;
+}
+
+nav.links a:hover,
+nav.links a:focus-visible {
+  color: var(--dark);
+  transform: translateY(-1px);
+}
+
+
+
+.account {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.account-out {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 20px;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.account-link:hover {
+  transform: translateY(-1px);
+}
+
+.account-link-signup {
+  border: 1px solid var(--dark);
+  background: transparent;
+  color: var(--dark);
+}
+
+.account-link-signup:hover {
+  background: color-mix(in srgb, var(--dark) 10%, transparent);
+}
+
+.account-link-login {
+  border: 1px solid var(--dark);
+  background: var(--dark);
+  color: var(--pale);
+}
+
+.account-link-login:hover {
+  background: var(--dark-2);
+  border-color: var(--dark-2);
+}
+
+
+
+.account-in {
+  position: relative;
+}
+
+
+.account-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--pale);
+  border-radius: 999px;
+  background: var(--white);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 200ms ease,
+    transform 200ms ease;
+}
+
+.account-toggle:hover,
+.account-toggle:focus-visible {
+  border-color: var(--dark);
+  transform: translateY(-1px);
+}
+
+
+.account-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  max-width: 0;
+  margin-left: 0;
+  opacity: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    max-width 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    margin-left 300ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    opacity 200ms ease;
+}
+
+.account-toggle:hover .account-name,
+.account-toggle:focus-visible .account-name,
+.account-toggle[aria-expanded="true"] .account-name {
+  max-width: 190px;
+  margin-left: 10px;
+  opacity: 1;
+}
+
+
+.account-avatar,
+.account-initials {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: transform 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.account-avatar {
+  object-fit: cover;
+  background: var(--pale);
+  display: block;
+}
+
+.account-initials {
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.account-toggle:hover .account-avatar,
+.account-toggle:hover .account-initials {
+  transform: scale(1.04);
+}
+
+.account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  min-width: 236px;
+  background: var(--white);
+  border: 1px solid var(--pale);
+  border-radius: 16px;
+  box-shadow: 0 22px 46px -28px color-mix(in srgb, var(--dark) 70%, transparent);
+  padding: 8px;
+  z-index: 40;
+}
+
+.account-menu[hidden] {
+  display: none;
+}
+
+.account-menu-head {
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--pale);
+  margin-bottom: 6px;
+}
+
+.account-menu-head strong {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-head span {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.account-menu-item:hover {
+  background: var(--pale-soft);
+  color: var(--dark);
+}
+
+.account-menu-item-sair {
+  color: var(--danger, #a4402f);
+}
+
+@media (max-width: 760px) {
+  
+  .account-toggle:hover .account-name {
+    max-width: 0;
+    margin-left: 0;
+    opacity: 0;
+  }
+  .account-toggle[aria-expanded="true"] .account-name {
+    max-width: 190px;
+    margin-left: 10px;
+    opacity: 1;
+  }
+  .account-link {
+    padding: 8px 14px;
+    font-size: 0.82rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-link,
+  .account-toggle,
+  .account-name,
+  .account-avatar,
+  .account-initials {
+    transition: none;
+  }
+  .account-link:hover,
+  .account-toggle:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .nav-inner {
+    justify-content: flex-start;
+    gap: 12px 24px;
+    padding: 14px 22px;
+  }
+
+  nav.links {
+    gap: 10px 18px;
+  }
+
+  nav.links a {
+    font-size: 0.9rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  header.site,
+  nav.links a {
+    animation: none;
+    transition: none;
+  }
+}

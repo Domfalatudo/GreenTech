@@ -1,0 +1,71 @@
+.hero-band .hero-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(280px, 0.92fr);
+  align-items: center;
+  gap: 40px;
+  max-width: 1120px;
+}
+
+.hero-copy {
+  max-width: 62ch;
+  position: relative;
+  z-index: 1;
+}
+
+.content-scene {
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.content-scene:active {
+  cursor: grabbing;
+}
+
+.content-scene canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.scene-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.78rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .hero-band {
+    padding: 58px 22px 56px;
+  }
+
+  .hero-band .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .content-scene {
+    max-width: 340px;
+  }
+
+  .toc {
+    margin-top: 30px;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .progress {
+    margin-top: 42px;
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+}
