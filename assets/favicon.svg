@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1b3f34"/>
+      <stop offset="100%" stop-color="#0f241d"/>
+    </linearGradient>
+    <linearGradient id="leafGrad" x1="16" y1="12" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#9fe2b2"/>
+      <stop offset="100%" stop-color="#49b675"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo arredondado elegante -->
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+
+  <!-- Folha brotando / símbolo Raiz -->
+  <path d="M22 45 C22 30 31 19 46 17 C46 32 37 43 22 45 Z" fill="url(#leafGrad)"/>
+
+  <!-- Nervura da folha enraizada com traço orgânico -->
+  <path d="M22 45 C28 37 35 30 45 20" stroke="#0f241d" stroke-width="2.2" stroke-linecap="round"/>
+
+  <!-- Caule suave descendo até a base -->
+  <path d="M22 45 C19 48 16 50 14 51" stroke="#49b675" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

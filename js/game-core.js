@@ -28,15 +28,15 @@
     var estado = {
       blocos: blocos,
       lotes: { [chaveLote(centro, centro)]: true },
-      dinheiro: 320,
+      dinheiro: 450,
       xp: 0,
       nivel: 1,
-      energia: 8,
-      energiaMax: 8,
-      agua: 12,
-      aguaMax: 30,
+      energia: 12,
+      energiaMax: 12,
+      agua: 25,
+      aguaMax: 40,
       graos: Object.assign({}, D.SEMENTES_INICIAIS),
-      itens: { enxada: 1, regador: 1, arvore: 2 },
+      itens: { enxada: 1, regador: 1, arvore: 3, machado: 1 },
       ferramenta: 'enxada',
       semente: 'milho',
       relogio: DIA_INICIO,
@@ -421,6 +421,16 @@
       bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.12);
       return { ok: true, msg: 'Solo remexido.', tipo: 'enxada' };
     }
+    if (id === 'machado') {
+      if (bloco.estrutura === 'arvore' || bloco.nativo) {
+        bloco.estrutura = null;
+        bloco.nativo = false;
+        estado.dinheiro += 20;
+        ganharXp(estado, 15);
+        return { ok: true, msg: 'Arvore cortada! +$20 e +15 XP.', tipo: 'machado' };
+      }
+      return { ok: false, msg: 'Nao ha arvore para cortar neste bloco.' };
+    }
     return { ok: false, msg: 'Sem efeito definido.' };
   }
 
@@ -617,14 +627,80 @@
     'clima', 'dias', 'estatisticas'
   ];
   // `construcoes` NÃO entra na lista de obrigatórios: assim um save anterior
-  // ao modo construção continua carregando e ganha o campo vazio em vez de
-  // jogar a fazenda inteira fora.
+  function migrarSave(dados) {
+    if (!dados || !dados.blocos) return null;
+    if (dados.blocos.length === D.GRADE * D.GRADE) return dados;
+    // Migração de save 12x12 (144 blocos) para 18x18 (324 blocos)
+    if (dados.blocos.length === 144 && D.GRADE === 18) {
+      try {
+        var novo = estadoInicial();
+        novo.dinheiro = Math.max(novo.dinheiro, dados.dinheiro || 0);
+        novo.xp = dados.xp || 0;
+        novo.nivel = dados.nivel || 1;
+        novo.energia = dados.energia || novo.energia;
+        novo.energiaMax = Math.max(novo.energiaMax, dados.energiaMax || 12);
+        novo.agua = dados.agua || novo.agua;
+        novo.aguaMax = Math.max(novo.aguaMax, dados.aguaMax || 40);
+        novo.graos = Object.assign({}, novo.graos, dados.graos || {});
+        novo.itens = Object.assign({}, novo.itens, dados.itens || {});
+        novo.estatisticas = Object.assign({}, novo.estatisticas, dados.estatisticas || {});
+
+        // Offset de centralização (18 - 12) / 2 = 3 blocos (= 1 lote)
+        var offsetBloco = 3;
+        var offsetLote = 1;
+
+        novo.lotes = {};
+        Object.keys(dados.lotes || {}).forEach(function (chave) {
+          var partes = chave.split(':').map(Number);
+          novo.lotes[chaveLote(partes[0] + offsetLote, partes[1] + offsetLote)] = true;
+        });
+        var centro = Math.floor(D.LADO_LOTE / 2);
+        novo.lotes[chaveLote(centro, centro)] = true;
+
+        for (var i = 0; i < dados.blocos.length; i++) {
+          var velho = dados.blocos[i];
+          var destino = blocoEm(novo, velho.x + offsetBloco, velho.z + offsetBloco);
+          if (destino) {
+            destino.umidade = velho.umidade;
+            destino.fertilidade = velho.fertilidade;
+            destino.poluicao = velho.poluicao;
+            destino.cultivo = velho.cultivo;
+            destino.estrutura = velho.estrutura;
+            destino.nativo = velho.nativo;
+            destino.bloqueado = velho.bloqueado;
+          }
+        }
+
+        if (Array.isArray(dados.construcoes)) {
+          novo.construcoes = dados.construcoes.map(function (c) {
+            return Object.assign({}, c, {
+              blocoX: c.blocoX + offsetBloco,
+              blocoZ: c.blocoZ + offsetBloco
+            });
+          });
+        }
+        return novo;
+      } catch (err) {
+        console.warn('Raiz: falha na migração do save.', err);
+        return null;
+      }
+    }
+    return null;
+  }
 
   function carregar() {
     try {
       var bruto = global.localStorage.getItem(D.CHAVE_SAVE);
       if (!bruto) return null;
       var dados = JSON.parse(bruto);
+      if (dados && dados.blocos && dados.blocos.length !== D.GRADE * D.GRADE) {
+        var migrado = migrarSave(dados);
+        if (migrado) {
+          salvar(migrado);
+          return migrado;
+        }
+        return null;
+      }
       if (!dados || !dados.blocos || dados.blocos.length !== D.GRADE * D.GRADE) return null;
       // save antigo ou incompleto nao pode quebrar a partida: descarta
       for (var i = 0; i < CAMPOS_OBRIGATORIOS.length; i++) {

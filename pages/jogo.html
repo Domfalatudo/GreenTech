@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Raiz — o Jogo</title>
+  <title>Raiz | O Jogo</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -54,10 +54,20 @@
     }
 
     header.site {
-      position: relative;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
       z-index: 30;
       background: color-mix(in srgb, var(--white) 90%, transparent);
       backdrop-filter: blur(10px);
+      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: transform;
+    }
+
+    /* header escondido (estilo "ocultar automaticamente" do Windows) */
+    header.site.header-escondido {
+      transform: translateY(-100%);
     }
 
     .nav-inner {
@@ -93,7 +103,6 @@
     #stage {
       position: absolute;
       inset: 0;
-      top: var(--site-header-height);
     }
 
     #stage canvas {
@@ -115,12 +124,14 @@
       bottom: 0;
       display: grid;
       grid-template-columns: minmax(150px, 200px) minmax(350px, 1fr) minmax(190px, 240px);
-      grid-template-rows: auto auto;
+      grid-template-rows: auto 1fr;
       grid-template-areas:
-        "loja    informacoes  dir"
+        "loja    .            dir"
         "bloco   ferramentas  dir";
       align-items: stretch;
+      align-content: end;
       gap: 10px;
+      row-gap: 6px;
       height: var(--hud-h);
       padding: 0 24px calc(14px + env(safe-area-inset-bottom, 0px));
       pointer-events: none;
@@ -131,24 +142,30 @@
       min-height: 0;
     }
 
-    .hud-loja {
+    .botao-loja {
       grid-area: loja;
-      display: flex;
     }
 
     .hud-bloco {
       grid-area: bloco;
       min-height: 0;
+      display: flex;
+    }
+
+    .hud-bloco .cartao {
+      width: 100%;
+      height: 100%;
     }
 
     .hud-renovar {
       display: none;
     }
 
-    /* informações: barra larga no meio, com os recursos da fazenda */
+    /* informações: agora fica dentro do bloco central, logo acima das ferramentas */
     .hud-informacoes {
-      grid-area: informacoes;
+      width: 100%;
       min-width: 0;
+      flex: 0 0 auto;
     }
 
     .hud-centro {
@@ -156,8 +173,10 @@
       display: flex;
       flex-direction: column;
       justify-content: flex-end;
-      gap: 6px;
+      gap: 3px;
       min-width: 0;
+      height: fit-content;      /* Encolhe a altura para o tamanho exato dos ícones/cards */
+      align-self: end;          /* Impede que o container pai (o .hud) estique este elemento */
     }
 
     .hud-dir {
@@ -199,13 +218,12 @@
 
     /* --- loja (topo da coluna esquerda) --- */
     .botao-loja {
-      width: 100%;
+      padding: 10px 0;
       flex: 0 0 auto;
       border: none;
       background: linear-gradient(135deg, var(--dark) 0%, color-mix(in srgb, var(--dark) 90%, black) 100%);
       color: var(--pale);
       border-radius: 14px;
-      padding: 12px 14px;
       font: inherit;
       font-size: 0.8rem;
       font-weight: 700;
@@ -341,8 +359,29 @@
     }
 
     /* --- barra central: ferramentas em linha horizontal --- */
+    /* O cabeçalho da coluna central (título + botão sair) só aparece no
+       modo construção — antes existia no HTML mas nunca era exibido. */
     .cabecalho-centro {
       display: none;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      padding: 0 2px 0 6px;
+    }
+
+    body.modo-construcao .cabecalho-centro {
+      display: flex;
+    }
+
+    .cabecalho-centro .titulo {
+      font-family: var(--serif);
+      font-size: 0.86rem;
+      font-weight: 600;
+      color: var(--dark);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
 
     .cartao[hidden] {
@@ -393,27 +432,6 @@
 
     .ferramentas button svg {
       pointer-events: none;
-    }
-
-    .ferramentas button::before {
-      content: '';
-      position: absolute;
-      inset: -2px;
-      background: linear-gradient(135deg, var(--pale-soft) 0%, transparent 100%);
-      border-radius: 50%;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      z-index: -1;
-    }
-
-    .ferramentas button:hover::before {
-      opacity: 1;
-    }
-
-    .ferramentas button:hover {
-      border-color: var(--dark);
-      transform: translateY(-4px) scale(1.1);
-      box-shadow: 0 8px 20px rgba(22, 51, 42, 0.2);
     }
 
     .ferramentas button.ativo {
@@ -758,13 +776,17 @@
       gap: 10px;
     }
 
-    .cartao {
+    [data-ui="loja-conteudo"] .cartao {
       display: flex;
       align-items: flex-start;
       gap: 14px;
       border: 1px solid var(--pale);
       border-radius: 14px;
       padding: 14px 16px;
+      background: var(--white);
+      backdrop-filter: none;
+      box-shadow: none;
+      overflow: visible;
     }
 
     .cartao .txt {
@@ -819,23 +841,33 @@
 
     .mapa-lotes {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 8px;
+      grid-template-columns: repeat(var(--lados-lote, 6), 1fr);
+      gap: 6px;
+      max-height: 52vh;
+      overflow-y: auto;
+      padding: 4px;
     }
 
     .lote-btn {
       aspect-ratio: 1;
-      border-radius: 12px;
+      border-radius: 10px;
       border: 1px solid var(--pale);
       cursor: pointer;
       font: inherit;
-      font-size: 0.66rem;
+      font-size: 0.64rem;
       color: var(--text);
-      padding: 4px;
+      padding: 4px 2px;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      align-items: flex-start;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .lote-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
     }
 
     .lote-btn.seu {
@@ -902,16 +934,21 @@
 
     /* === MODO CONSTRUÇÃO: ocupa a barra central do HUD === */
     .inventario-construcao {
+      /* `flex: 1 1 auto` + `min-height: 0` fazem o painel ocupar apenas a
+         sobra de altura do HUD, com a lista rolando por dentro. Antes o
+         painel crescia junto com o conteúdo, subia sobre o mapa e levava
+         título, controles e status para fora da tela. */
       flex: 1 1 auto;
       min-height: 0;
+      max-height: 100%;
       background: color-mix(in srgb, var(--white) 95%, transparent);
       border: 2px solid var(--dark);
-      border-radius: 18px;
-      padding: 14px 16px;
+      border-radius: 16px;
+      padding: 12px 14px;
       backdrop-filter: blur(10px);
       display: none;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
       box-shadow: 0 8px 24px rgba(22, 51, 42, 0.15);
       touch-action: none;
       overflow: hidden;
@@ -932,30 +969,49 @@
       gap: 8px;
     }
 
-    .inventario-construcao .fechar-construcao {
+    .fechar-construcao {
       margin-left: auto;
       background: transparent;
       border: none;
       color: var(--muted);
       cursor: pointer;
-      font-size: 1.3rem;
-      padding: 4px 8px;
-      border-radius: 6px;
-      transition: all 0.2s;
+      font: inherit;
+      font-size: 1.15rem;
+      line-height: 1;
+      padding: 2px 8px;
+      border-radius: 8px;
+      transition: background 0.2s, color 0.2s;
     }
 
-    .inventario-construcao .fechar-construcao:hover {
+    .fechar-construcao:hover {
       background: var(--pale);
       color: var(--dark);
     }
 
     .inventario-scroll {
+      /* grade responsiva: 3 equipamentos por linha em tela cheia, 1 em
+         telas estreitas — os cards deixam de ser faixas gigantes */
+      flex: 1 1 auto;
+      min-height: 0;
       overflow-y: auto;
-      display: flex;
-      flex-direction: column;
+      overflow-x: hidden;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
       gap: 8px;
-      max-height: 100%;
-      padding-right: 4px;
+      align-content: start;
+      padding: 5px 6px 2px 1px;
+      overscroll-behavior: contain;
+    }
+
+    /* marreta e divisória ocupam a linha inteira da grade */
+    .inventario-scroll .item-marreta,
+    .inventario-scroll .separador-construcao {
+      grid-column: 1 / -1;
+    }
+
+    .separador-construcao {
+      height: 1px;
+      background: var(--pale);
     }
 
     .inventario-scroll::-webkit-scrollbar {
@@ -975,13 +1031,14 @@
     .item-construcao {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 12px;
+      gap: 10px;
+      min-width: 0;
+      padding: 8px 10px;
       background: var(--white);
       border: 2px solid var(--pale);
       border-radius: 12px;
       cursor: grab;
-      transition: all 0.2s;
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
       position: relative;
       /* sem isto o navegador "rola"/rola a página no meio do arraste do dedo */
       touch-action: none;
@@ -991,8 +1048,8 @@
 
     .item-construcao:hover {
       border-color: var(--dark);
-      transform: translateX(-4px);
-      box-shadow: 4px 4px 0 var(--pale);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 10px rgba(22, 51, 42, 0.14);
     }
 
     .item-construcao:active {
@@ -1019,7 +1076,7 @@
 
     .item-construcao.selecionado:hover {
       border-color: #ff6b35;
-      box-shadow: 0 0 0 3px color-mix(in srgb, #ff6b35 20%, transparent), 4px 4px 0 var(--pale);
+      box-shadow: 0 0 0 3px color-mix(in srgb, #ff6b35 20%, transparent), 0 4px 10px rgba(22, 51, 42, 0.14);
     }
 
     .item-construcao.arrastando {
@@ -1051,6 +1108,13 @@
       background: linear-gradient(135deg, #ff6b35 0%, #ff8b35 100%) !important;
       border-color: #ff6b35 !important;
       color: white !important;
+      padding: 6px 10px;
+    }
+
+    /* o emoji da marreta não pode inflar o card (era inline no JS) */
+    .item-marreta .icon {
+      background: rgba(255, 255, 255, 0.22) !important;
+      font-size: 1rem !important;
     }
 
     .item-marreta .nome {
@@ -1064,23 +1128,24 @@
 
     .item-marreta.selecionado {
       box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.4), 0 8px 16px rgba(255, 107, 53, 0.3);
-      transform: translateX(-4px) scale(1.02);
+      transform: translateY(-2px);
     }
 
     .item-marreta:hover {
       background: linear-gradient(135deg, #ff8b35 0%, #ffa535 100%) !important;
-      transform: translateX(-6px);
+      transform: translateY(-2px);
     }
 
     .item-construcao .icon {
-      width: 40px;
-      height: 40px;
+      width: 32px;
+      height: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       background: var(--pale-soft);
       border-radius: 8px;
-      font-size: 1.5rem;
+      font-size: 1.1rem;
+      line-height: 1;
       flex-shrink: 0;
     }
 
@@ -1091,47 +1156,56 @@
 
     .item-construcao .info .nome {
       font-weight: 600;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       color: var(--dark);
-      margin-bottom: 2px;
+      margin-bottom: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .item-construcao .info .quantidade {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .item-construcao .badge {
       position: absolute;
-      top: -6px;
-      right: -6px;
+      top: -5px;
+      right: -5px;
       background: var(--dark);
       color: var(--pale);
-      font-size: 0.7rem;
+      font-size: 0.64rem;
       font-weight: 700;
-      padding: 3px 8px;
+      padding: 2px 6px;
       border-radius: 999px;
       border: 2px solid var(--white);
     }
 
-    .aviso-construcao {
-      padding: 10px;
-      background: color-mix(in srgb, #ff6b35 15%, transparent);
-      border: 1px solid #ff6b35;
-      border-radius: 8px;
-      font-size: 0.75rem;
-      color: var(--text);
-      text-align: center;
-      line-height: 1.5;
+    /* Sem nada a avisar a linha de status não ocupa espaço nenhum */
+    .status-construcao:empty {
+      display: none;
     }
 
-    /* Controles de girar/cancelar: obrigatórios no toque */
+    /* Controles de girar/cancelar: só aparecem quando há algo a girar ou
+       cancelar (item na mão ou marreta armada). Ocioso, o painel fica
+       apenas com a lista de equipamentos. */
     .controles-construcao {
       display: flex;
+      flex: 0 0 auto;
       gap: 8px;
     }
 
-    .controles-construcao[hidden] {
+    .controles-construcao[hidden],
+    .controles-construcao.ocioso {
+      display: none;
+    }
+
+    /* Sem preview (marreta armada) o "Girar" não faz sentido */
+    .controles-construcao.sem-girar .ctrl:first-child {
       display: none;
     }
 
@@ -1141,9 +1215,9 @@
       background: var(--white);
       color: var(--dark);
       border-radius: 10px;
-      padding: 10px 8px;
+      padding: 8px 6px;
       font: inherit;
-      font-size: 0.78rem;
+      font-size: 0.74rem;
       font-weight: 600;
       cursor: pointer;
       touch-action: manipulation;
@@ -1177,14 +1251,18 @@
 
     .status-construcao {
       margin: 0;
-      padding: 8px 10px;
-      border-radius: 8px;
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      border-radius: 999px;
       background: var(--pale-soft);
       border: 1px solid var(--pale);
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       text-align: center;
-      min-height: 2.2em;
+      min-height: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* Desabilitar seleção de texto durante modo construção */
@@ -1259,23 +1337,18 @@
 
       .hud {
         grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        grid-template-rows: auto auto;
+        grid-template-rows: auto 1fr;
         grid-template-areas:
-          "loja         dir"
-          "informacoes  informacoes"
-          "bloco        ferramentas";
+          "loja  dir"
+          "bloco ferramentas";
         gap: 8px;
+        row-gap: 6px;
         padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
       }
 
       .cartao {
         padding: 10px 12px;
         border-radius: 14px;
-      }
-
-      .botao-loja {
-        padding: 10px;
-        font-size: 0.78rem;
       }
 
       .info-lista {
@@ -1318,17 +1391,81 @@
         font-size: 0.75rem;
       }
 
-      .aviso-construcao {
-        font-size: 0.72rem;
-        padding: 8px;
-      }
-
       .item-construcao {
         padding: 10px;
       }
 
       .hint {
         display: none;
+      }
+    }
+
+    /* ==========================================================
+       MODO CONSTRUÇÃO — LAYOUT DA BARRA CENTRAL
+       ----------------------------------------------------------
+       No CSS base a coluna central é `height: fit-content` dentro de uma
+       grade de altura fixa. Com 13 equipamentos, o painel crescia sem
+       limite, subia por cima do mapa e empurrava título, aviso, controles
+       e status para fora da tela. Aqui ela passa a ocupar as DUAS linhas
+       do HUD (altura definida) e a lista rola por dentro do painel.
+       ========================================================== */
+    body.modo-construcao .hud {
+      grid-template-areas:
+        "loja    ferramentas  dir"
+        "bloco   ferramentas  dir";
+    }
+
+    body.modo-construcao .hud-centro {
+      height: auto;
+      align-self: stretch;
+      justify-content: flex-start;
+      gap: 6px;
+      min-height: 0;
+    }
+
+    /* enquanto se constrói, a barra de informações fica fina */
+    body.modo-construcao .hud-informacoes .cartao {
+      padding: 6px 12px;
+    }
+
+    @media (max-width: 1100px) {
+      .inventario-scroll {
+        grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+      }
+    }
+
+    /* Celular: o painel de construção ocupa o HUD inteiro — o resto do HUD
+       some enquanto o modo está ligado, senão não sobra altura para a lista */
+    @media (max-width: 760px) {
+      body.modo-construcao {
+        --hud-h: min(62vh, 430px);
+      }
+
+      body.modo-construcao .hud {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+        grid-template-areas: "ferramentas";
+      }
+
+      body.modo-construcao .botao-loja,
+      body.modo-construcao .hud-bloco,
+      body.modo-construcao .hud-dir,
+      body.modo-construcao .hud-informacoes {
+        display: none;
+      }
+
+      .inventario-construcao {
+        padding: 10px;
+      }
+
+      .inventario-scroll {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 6px;
+      }
+
+      .item-construcao {
+        gap: 8px;
+        padding: 6px 8px;
       }
     }
 
@@ -1374,12 +1511,9 @@
        Direita:  inventario do jogador
   ===================================================== -->
   <div class="hud">
-    <!-- COLUNA ESQUERDA, LINHA 1: loja -->
-    <div class="hud-loja">
       <button class="botao-loja" type="button" data-ui="abrir-loja">
         Loja e melhorias
       </button>
-    </div>
 
     <div class="hud-bloco">
       <div class="cartao">
@@ -1417,27 +1551,22 @@
       </button>
     </div>
 
-    <!-- CENTRO, LINHA 1: informacoes da fazenda (lista vertical) -->
-    <div class="hud-informacoes">
-      <div class="cartao">
-        <ul class="info-lista" aria-label="Informações da fazenda">
-          <li><span class="rot icone-info" data-icone="dinheiro"></span><span class="val" data-ui="dinheiro">$0</span></li>
-          <li><span class="rot icone-info" data-icone="energia"></span><span class="val" data-ui="energia">0/0</span></li>
-          <li><span class="rot icone-info" data-icone="agua"></span><span class="val" data-ui="agua">0</span></li>
-          <li><span class="rot icone-info" data-ui="icone-tempo"></span><span class="val" data-ui="tempo">-</span></li>
-          <li><span class="rot icone-info" data-icone="nivel"></span><span class="val" data-ui="nivel">1</span></li>
-          <li><span class="rot icone-info" data-icone="xp"></span><span class="val" data-ui="xp">0</span></li>
-          <li><span class="rot icone-info" data-icone="pegada"></span><span class="val" data-ui="pegada">0</span></li>
-          <li><span class="rot icone-info" data-ui="icone-clima"></span><span class="val" data-ui="clima">-</span></li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- CENTRO: ferramentas; no modo construção vira o inventário dele -->
+    <!-- CENTRO: informações da fazenda + ferramentas; no modo construção vira o inventário dele -->
     <div class="hud-centro">
-      <div class="cabecalho-centro">
-        <span class="titulo" data-ui="titulo-centro">Ferramentas</span>
-        <button class="fechar-construcao" data-ui="fechar-construcao" title="Sair do modo construção" hidden>×</button>
+      <!-- informacoes da fazenda (lista horizontal), logo acima das ferramentas -->
+      <div class="hud-informacoes">
+        <div class="cartao">
+          <ul class="info-lista" aria-label="Informações da fazenda">
+            <li><span class="rot icone-info" data-icone="dinheiro"></span><span class="val" data-ui="dinheiro">$0</span></li>
+            <li><span class="rot icone-info" data-icone="energia"></span><span class="val" data-ui="energia">0/0</span></li>
+            <li><span class="rot icone-info" data-icone="agua"></span><span class="val" data-ui="agua">0</span></li>
+            <li><span class="rot icone-info" data-ui="icone-tempo"></span><span class="val" data-ui="tempo">-</span></li>
+            <li><span class="rot icone-info" data-icone="nivel"></span><span class="val" data-ui="nivel">1</span></li>
+            <li><span class="rot icone-info" data-icone="xp"></span><span class="val" data-ui="xp">0</span></li>
+            <li><span class="rot icone-info" data-icone="pegada"></span><span class="val" data-ui="pegada">0</span></li>
+            <li><span class="rot icone-info" data-ui="icone-clima"></span><span class="val" data-ui="clima">-</span></li>
+          </ul>
+        </div>
       </div>
 
       <div class="cartao barra-ferramentas" data-ui="barra-ferramentas">
@@ -1445,13 +1574,6 @@
       </div>
 
       <aside class="inventario-construcao" data-ui="inventario-construcao">
-        <div class="aviso-construcao">
-          Arraste um item até o terreno e solte. <strong>R</strong> gira em 90°,
-          <strong>Esc</strong> ou o botão direito cancela. No celular, use os botões abaixo.
-          <br>
-          Cada equipamento comprado pode ter <strong>uma</strong> cópia no terreno — e continua
-          contando na fazenda.
-        </div>
         <div class="controles-construcao" data-ui="controles-construcao" hidden>
           <button type="button" class="ctrl" data-ui="girar-construcao">
             Girar <span class="angulo" data-ui="angulo-construcao">0°</span>
@@ -1495,6 +1617,48 @@
   <script src="../js/game-data.js"></script>
   <script src="../js/game-core.js"></script>
   <script src="../js/game-view.js"></script>
+
+  <script>
+    // Header some sozinho e volta ao aproximar o mouse do topo (só nesta página)
+    (function () {
+      var header = document.querySelector('header.site');
+      if (!header) return;
+
+      var ZONA_TOPO = 56; // px a partir do topo que já revela o header
+      var ATRASO_PARA_ESCONDER = 1200; // ms parado longe do topo até esconder
+      var timerEsconder = null;
+
+      function mostrarHeader() {
+        header.classList.remove('header-escondido');
+        if (timerEsconder) {
+          clearTimeout(timerEsconder);
+          timerEsconder = null;
+        }
+      }
+
+      function agendarEsconderHeader() {
+        if (timerEsconder) clearTimeout(timerEsconder);
+        timerEsconder = setTimeout(function () {
+          header.classList.add('header-escondido');
+        }, ATRASO_PARA_ESCONDER);
+      }
+
+      document.addEventListener('mousemove', function (evento) {
+        if (evento.clientY <= ZONA_TOPO) {
+          mostrarHeader();
+        } else {
+          agendarEsconderHeader();
+        }
+      });
+
+      header.addEventListener('mouseenter', mostrarHeader);
+      header.addEventListener('mouseleave', agendarEsconderHeader);
+      header.addEventListener('focusin', mostrarHeader);
+
+      // some pouco depois de carregar a página
+      agendarEsconderHeader();
+    })();
+  </script>
 </body>
 
 </html>

@@ -1,0 +1,106 @@
+/* Animações e interatividade estilo Creators para as páginas de Conteúdo */
+
+/* Keyframes inspiradas na página creators */
+@keyframes content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes content-card-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Estado inicial quando scroll-reveal está ativo */
+html.scroll-reveal-ready article.piece:not(.is-visible),
+html.scroll-reveal-ready .case-card:not(.is-visible),
+html.scroll-reveal-ready .checklist:not(.is-visible),
+html.scroll-reveal-ready .stat-inline:not(.is-visible),
+html.scroll-reveal-ready .pull:not(.is-visible) {
+  opacity: 0;
+}
+
+/* Transições e animações de revelação suave */
+html.scroll-reveal-ready article.piece.is-visible {
+  animation: content-reveal 700ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay, 0ms) both;
+}
+
+/* Cards interativos com efeito 3D / tilt e flutuação suave como os creator-card */
+.case-card,
+.checklist {
+  transform: rotateX(var(--tilt-y, 0deg)) rotateY(var(--tilt-x, 0deg)) translateZ(var(--card-depth, 0px));
+  transform-style: preserve-3d;
+  transition: transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1), box-shadow 240ms ease;
+  will-change: transform;
+}
+
+.case-card:hover,
+.checklist:hover {
+  box-shadow: 0 14px 30px rgba(22, 51, 42, 0.08);
+}
+
+html.scroll-reveal-ready .case-card.is-visible,
+html.scroll-reveal-ready .checklist.is-visible {
+  animation: content-reveal 640ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay, 0ms) both,
+             content-card-float 5.8s ease-in-out calc(var(--reveal-delay, 0ms) + 640ms) infinite;
+}
+
+/* Destaque das citações .pull e estatísticas .stat-inline */
+html.scroll-reveal-ready .pull.is-visible,
+html.scroll-reveal-ready .stat-inline.is-visible {
+  animation: content-reveal 600ms cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay, 0ms) both;
+}
+
+.pull {
+  transition: transform 220ms ease, border-color 220ms ease;
+}
+.pull:hover {
+  transform: translateX(6px);
+}
+
+.stat-inline div {
+  transition: transform 200ms ease;
+}
+.stat-inline div:hover {
+  transform: translateY(-4px);
+}
+
+/* Tags de navegação (TOC) com transição suave */
+.toc a {
+  transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+.toc a:hover {
+  transform: translateY(-2px);
+}
+
+/* Efeito de hover no cabeçalho dos artigos */
+.piece-head svg {
+  transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+article.piece:hover .piece-head svg {
+  transform: scale(1.12) rotate(4deg);
+}
+
+/* Respeito à preferência de redução de movimento */
+@media (prefers-reduced-motion: reduce) {
+  html.scroll-reveal-ready article.piece,
+  html.scroll-reveal-ready .case-card,
+  html.scroll-reveal-ready .checklist,
+  html.scroll-reveal-ready .stat-inline,
+  html.scroll-reveal-ready .pull {
+    opacity: 1 !important;
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

@@ -1,7 +1,7 @@
 window.RaizJogo = (function () {
   'use strict';
 
-  var GRADE = 12;
+  var GRADE = 18;
   var LOTE = 3;
   var LADO_LOTE = GRADE / LOTE;
   var DIA_SEGUNDOS = 90;
@@ -53,7 +53,7 @@ window.RaizJogo = (function () {
 
   var XP_POR_NIVEL = function (nivel) { return Math.round(90 * Math.pow(nivel, 1.45)); };
 
-  var SEMENTES_INICIAIS = { milho: 6, soja: 6, trigo: 6 };
+  var SEMENTES_INICIAIS = { milho: 12, soja: 12, trigo: 12, girassol: 6, hortalica: 6, feija: 6 };
 
   // === MODO CONSTRUÇÃO (exposição dos equipamentos no terreno) ===
   // Lista fechada do que pode ser posicionado no mapa, com o tamanho real
@@ -66,18 +66,18 @@ window.RaizJogo = (function () {
     // ou seja, até LOTE * LOTE (9) construções num lote de 3x3.
     limitePorLote: null,
     itens: {
-      trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.36, altura: 0.55 },
-      tratorEletrico: { nome: 'Trator Elétrico', emoji: '⚡', raio: 0.36, altura: 0.55 },
-      drone: { nome: 'Drone', emoji: '🚁', raio: 0.32, altura: 0.5 },
-      colheitadeira: { nome: 'Colheitadeira', emoji: '🌾', raio: 0.38, altura: 0.6 },
-      gotejamento: { nome: 'Irrigação', emoji: '💧', raio: 0.34, altura: 0.3 },
-      composteira: { nome: 'Composteira', emoji: '♻️', raio: 0.3, altura: 0.4 },
-      arvore: { nome: 'Reflorestamento', emoji: '🌳', raio: 0.28, altura: 0.95 },
-      painel: { nome: 'Painel Solar', emoji: '☀️', raio: 0.3, altura: 0.35 },
-      turbina: { nome: 'Turbina Eólica', emoji: '💨', raio: 0.26, altura: 1.0 },
-      bateria: { nome: 'Bateria', emoji: '🔋', raio: 0.25, altura: 0.3 },
-      poste: { nome: 'Poste de Luz', emoji: '💡', raio: 0.2, altura: 1.2 },
-      caixa: { nome: 'Caixa d’água', emoji: '🚰', raio: 0.3, altura: 0.35 }
+      trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.42, altura: 0.68 },
+      tratorEletrico: { nome: 'Trator Elétrico', emoji: '⚡', raio: 0.42, altura: 0.68 },
+      drone: { nome: 'Drone', emoji: '🚁', raio: 0.35, altura: 0.55 },
+      colheitadeira: { nome: 'Colheitadeira', emoji: '🌾', raio: 0.46, altura: 0.78 },
+      gotejamento: { nome: 'Irrigação', emoji: '💧', raio: 0.34, altura: 0.28 },
+      composteira: { nome: 'Composteira', emoji: '♻️', raio: 0.35, altura: 0.48 },
+      arvore: { nome: 'Reflorestamento', emoji: '🌳', raio: 0.32, altura: 1.25 },
+      painel: { nome: 'Painel Solar', emoji: '☀️', raio: 0.35, altura: 0.48 },
+      turbina: { nome: 'Turbina Eólica', emoji: '💨', raio: 0.28, altura: 1.45 },
+      bateria: { nome: 'Bateria', emoji: '🔋', raio: 0.28, altura: 0.42 },
+      poste: { nome: 'Poste de Luz', emoji: '💡', raio: 0.22, altura: 1.35 },
+      caixa: { nome: 'Caixa d’água', emoji: '🚰', raio: 0.35, altura: 0.52 }
     }
   };
 

@@ -22,7 +22,6 @@
 
   var FERRAMENTAS = [
     { id: 'plantar', nome: 'Plantar', tipo: 'acao', cor: '#6f9a4a' },
-    { id: 'regar', nome: 'Regar', tipo: 'acao', cor: '#4a90a8' },
     { id: 'adubar', nome: 'Adubar', tipo: 'acao', cor: '#8a6b3f' },
     { id: 'colher', nome: 'Colher', tipo: 'acao', cor: '#d8b64a' },
     { id: 'despoluir', nome: 'Despoluir', tipo: 'acao', cor: '#a4402f' },
@@ -49,23 +48,41 @@
   var houveEstruturaNoturna = false;
   var tempoAndar = 0;
   var andando = false;
+  var correndo = false;
 
-  // === FISICA DO PERSONAGEM ===
+  // === FISICA DO PERSONAGEM (unidades por SEGUNDO, integrado com dt) ===
+  var ALTURA_CHAO = 0.15; // topo dos blocos (Box 0.3 centrada em y=0)
   var fisica = {
     velocidade: new THREE.Vector3(),
-    aceleracao: 0.15,
-    friccao: 0.85,
-    velocidadeMaxima: 0.12,
-    gravidade: -0.02,
+    aceleracao: 20,       // aceleracao horizontal (unidades/s²)
+    friccao: 12.0,          // desaceleração horizontal (por segundo)
+    velocidadeNormal: 4.0,
+    velocidadeSprint: 6.0,
+    velocidadeMaxima: 4.0,  // unidades/s (antes era 0.13 por frame!)
+    gravidade: -22.0,       // gravidade vertical (unidades/s²)
     velocidadeY: 0,
     noChao: true,
-    forcaPulo: 0.18,
-    altura: 0.8,
-    raio: 0.3
+    forcaPulo: 7.5,         // impulso vertical (unidades/s) — altura ~1.2 bloco
+    altura: 0.85,
+    raio: 0.28,
+    passoMaximo: 0.14,
+    anguloAtual: 0,
+    anguloAlvo: 0,
+    inclinacaoCorpo: 0,
+    inclinacaoCurva: 0,
+    squashX: 1,
+    squashY: 1,
+    squashZ: 1,
+    tempoNoAr: 0,
+    coyoteTime: 0,          // segundos desde que saiu do chão (permite pular um pouco depois)
+    jumpBuffer: 0,          // segundos desde que pressionou espaço (permite pular um pouco antes)
+    ultimoPassoTempo: 0
   };
   
   var teclasPressionadas = {};
   var obstaculos = []; // Lista de objetos com colisão
+  var particulasPoeira = [];
+  var animacaoAcao = { ativa: false, tempo: 0, duracao: 0.35, tipo: '' };
 
   // =====================================================================
   // ESTADO DO MODO CONSTRUÇÃO
@@ -136,8 +153,7 @@
     var fechar = ui('fechar-construcao');
     if (titulo) {
       titulo.textContent = modoConstrucao.ativo
-        ? 'Inventário do modo construção'
-        : 'Ferramentas';
+         'Ferramentas';
     }
     if (barra) barra.hidden = modoConstrucao.ativo;
     if (fechar) fechar.hidden = !modoConstrucao.ativo;
@@ -176,7 +192,9 @@
     atualizarControlesConstrucao();
     pintarInspetor();
 
-    aviso('Modo Construção ligado. Arraste um item até o terreno e solte.', false);
+    // O aviso do modo perdeu a caixa de texto fixa do painel: as teclas
+    // de atalho são lembradas aqui, uma vez, no lugar dela.
+    aviso('Modo Construção ligado. Arraste um item até o terreno; R gira 90° e Esc cancela.', false);
   }
 
   // Desativar o modo construção devolvendo o jogo ao estado anterior
@@ -249,7 +267,7 @@
       depthWrite: false
     });
 
-    // Altura da grade (acima dos blocos)
+    // Altura da grade (acima dos blocos) — planos somem junto com ela
     var alturaGrade = 0.2;
 
     // Calcular limites da grade baseado no sistema de coordenadas
@@ -289,6 +307,8 @@
     }
 
     // Adicionar plano verde APENAS em blocos liberados
+    // Os planos ficam DENTRO de gradeGroup, então somem automaticamente
+    // quando a grade é escondida (gradeGroup.visible = false fora do modo).
     estado.blocos.forEach(function(b) {
       var p = posicaoDe(b);
 
@@ -304,7 +324,7 @@
           new THREE.MeshBasicMaterial({
             color: 0x6fbf7a,
             transparent: true,
-            opacity: 0.25,
+            opacity: 0.16,
             side: THREE.DoubleSide,
             depthWrite: false
           })
@@ -347,6 +367,16 @@
     var limite = meio + TILE / 2;
     return x >= -limite && x <= limite && z >= -limite && z <= limite;
   }
+
+  // Bloco sob uma posição do mundo (para colisão com lotes travados).
+  // Devolve null fora da grade.
+  function blocoSobXZ(x, z) {
+    if (!estado) return null;
+    var bx = Math.round((x + meio) / STEP);
+    var bz = Math.round((z + meio) / STEP);
+    if (bx < 0 || bz < 0 || bx >= D.GRADE || bz >= D.GRADE) return null;
+    return C.blocoEm(estado, bx, bz);
+  }
   
   // ==========================================================
   // INVENTÁRIO DO MODO CONSTRUÇÃO
@@ -372,7 +402,7 @@
     if (modoConstrucao.modoDeletar) divMarreta.classList.add('selecionado');
 
     divMarreta.innerHTML =
-      '<div class="icon" style="font-size: 1.8rem;">🔨</div>' +
+      '<div class="icon">🔨</div>' +
       '<div class="info">' +
         '<div class="nome">Marreta</div>' +
         '<div class="quantidade">' +
@@ -387,9 +417,10 @@
 
     container.appendChild(divMarreta);
 
-    // Separador visual
+    // Separador visual entre a marreta e a lista de equipamentos.
+    // A lista é um grid: a classe faz a linha ocupar a largura inteira.
     var separador = document.createElement('div');
-    separador.style.cssText = 'height: 1px; background: var(--pale); margin: 8px 0;';
+    separador.className = 'separador-construcao';
     container.appendChild(separador);
 
     Object.keys(D.CONSTRUCOES.itens).forEach(function (itemId) {
@@ -522,10 +553,89 @@
   // ==========================================================
   // CRIAR / RECONSTRUIR CONSTRUÇÕES
   // ==========================================================
+  // Modelo 3D permanente de um item do modo construção.
+  // Reaproveita malhaDeEstrutura() para não duplicar os modelos:
+  // todo id de D.CONSTRUCOES.itens tem um case correspondente lá.
+  function criarModeloItem(itemId) {
+    if (!D.CONSTRUCOES || !D.CONSTRUCOES.itens[itemId]) return new THREE.Group();
+    var g = malhaDeEstrutura(itemId);
+    g.userData.itemId = itemId;
+    return g;
+  }
+
+  // Preview translúcido que segue o ponteiro: mesmo modelo, mas sem
+  // sombra e com material clonado (para o pintarPreview poder tingir
+  // de verde/vermelho sem vazar para o modelo permanente).
+  function criarPreviewItem(itemId) {
+    var g = criarModeloItem(itemId);
+    g.traverse(function (no) {
+      if (!no.isMesh) return;
+      no.castShadow = false;
+      no.receiveShadow = false;
+      if (no.material) {
+        no.material = no.material.clone();
+        no.material.transparent = true;
+        no.material.opacity = 0.65;
+        no.material.depthWrite = false;
+      }
+    });
+    g.userData.preview = true;
+    return g;
+  }
+
+  // Relógio global das animações das construções (hélices, rotor, etc.)
+  var tempoAnimConstrucao = 0;
+
+  // Anima um item já colocado no terreno (chamado todo frame no laco).
+  // Procura as peças móveis tanto no próprio grupo quanto nos filhos
+  // (drone guarda as hélices um nível abaixo, dentro do sub-grupo).
+  function animarItem(item, dt) {
+    if (!item || !item.userData) return;
+    tempoAnimConstrucao += dt || 0.016;
+    var id = item.userData.itemId;
+
+    if (item.userData.gira) item.userData.gira.rotation.z += dt * 3.0;
+    if (item.userData.molinete) item.userData.molinete.rotation.x += dt * 2.2;
+    if (item.userData.helices) {
+      item.userData.helices.forEach(function (h, i) {
+        h.rotation.y += dt * (18 + i * 3);
+      });
+    }
+    item.traverse(function (no) {
+      if (!no || !no.userData) return;
+      if (no !== item && no.userData.gira) no.userData.gira.rotation.z += dt * 3.0;
+      if (no !== item && no.userData.molinete) no.userData.molinete.rotation.x += dt * 2.2;
+      if (no !== item && no.userData.helices) {
+        no.userData.helices.forEach(function (h, i) {
+          h.rotation.y += dt * (18 + i * 3);
+        });
+      }
+      // Pisca-pisca de alerta da turbina
+      if (no === item.userData.luzAlerta && no.material && no.material.emissiveIntensity !== undefined) {
+        no.material.emissiveIntensity = 0.6 + 0.4 * Math.sin(tempoAnimConstrucao * 4);
+      }
+    });
+
+    // Drone flutua suavemente sobre o bloco
+    if (id === 'drone') {
+      if (item.userData.fase === undefined) item.userData.fase = Math.random() * Math.PI * 2;
+      item.position.y = ALTURA_CHAO + 0.35 + Math.sin(tempoAnimConstrucao * 2 + item.userData.fase) * 0.06;
+    }
+
+    // Poste acende a lâmpada e a luz real só à noite
+    if (item.userData.eLuzPoste && estado) {
+      var ehNoite = C.ehNoite(estado);
+      if (item.userData.luzPonto) item.userData.luzPonto.intensity = ehNoite ? 1.6 : 0;
+      if (item.userData.lampada && item.userData.lampada.material && item.userData.lampada.material.emissiveIntensity !== undefined) {
+        item.userData.lampada.material.emissiveIntensity = ehNoite ? 1.2 : 0.15;
+      }
+    }
+  }
+
   function criarConstrucao(itemId, bloco, rotacao) {
     var item = criarModeloItem(itemId);
     var p = posicaoDe(bloco);
-    item.position.set(p[0], 0, p[2]);
+    item.position.set(p[0], ALTURA_CHAO, p[2]);
     item.rotation.y = (rotacao || 0) * ANGULO_GIRO;
     item.userData.permanente = true;
     item.userData.itemId = itemId;
@@ -794,15 +904,21 @@
     if (!silencioso) aviso('Construção cancelada.', false);
   }
 
-  // Controles visíveis da UI de construção: botões de girar/cancelar
-  // (essenciais no toque) e a linha de status com o motivo do bloqueio.
-  // Só escreve no DOM quando o texto muda: é chamada a cada pointermove.
+  // Texto da linha de status da construção. Fica VAZIA quando não há nada a
+  // avisar — o CSS esconde a linha nesse caso (`.status-construcao:empty`),
+  // então só aparecem as mensagens contextuais (bloco ocupado, marreta
+  // armada, prévia válida). Só escreve no DOM quando o texto muda: é
+  // chamada a cada pointermove.
   function textoDeStatus() {
     if (modoConstrucao.modoDeletar) {
       return 'Marreta armada: toque na construção destacada para retirar.';
     }
     if (!modoConstrucao.preview) {
-      return 'Arraste um item até o terreno, ou toque nele e depois no bloco.';
+      return '';
+    }
+    // prévia ainda não levada ao mapa (item recém-selecionado): silêncio
+    if (!modoConstrucao.preview.visible && !modoConstrucao.previewMotivo) {
+      return '';
     }
     if (modoConstrucao.previewValido) {
       return 'Soltar aqui: ' + nomeDoItem(modoConstrucao.itemSelecionado) + ' · ' +
@@ -821,6 +937,12 @@
     if (painel) painel.hidden = !modoConstrucao.ativo;
     if (girar) girar.disabled = !modoConstrucao.preview;
     if (cancelar) cancelar.disabled = !modoConstrucao.preview && !modoConstrucao.modoDeletar;
+    // Sem item na mão (e sem marreta) os botões não têm função: o painel
+    // fica apenas com a lista de equipamentos.
+    if (painel) {
+      painel.classList.toggle('ocioso', !modoConstrucao.preview && !modoConstrucao.modoDeletar);
+      painel.classList.toggle('sem-girar', !modoConstrucao.preview);
+    }
     if (angulo) {
       var grafico = modoConstrucao.itemSelecionado && modoConstrucao.itemSelecionado !== 'marreta'
         ? (modoConstrucao.rotacao * 90) + '°'
@@ -933,7 +1055,6 @@
     return mat;
   }
 
-
   function geometriaBloco() {
     var g = new THREE.BoxGeometry(TILE, 0.3, TILE);
     var uv = g.attributes.uv;
@@ -952,13 +1073,329 @@
     return g;
   }
 
+  // Cria a malha do bloco enriquecida com detalhes 3D de terreno
+  function criarMalhaBlocoTerreno(b, geo) {
+    var grupo = new THREE.Group();
+    var matAjustes = {};
+    if (b.umidade > 0.55 && !b.bloqueado) {
+      // Solo úmido com brilho e reflexo aquoso
+      matAjustes = { roughness: 0.42, metalness: 0.12 };
+    } else if (b.poluicao > 0.45 && !b.bloqueado) {
+      matAjustes = { roughness: 0.95, metalness: 0.08 };
+    }
+    var baseMesh = new THREE.Mesh(geo, materialBase(corDoSolo(b), 'soil', matAjustes));
+    baseMesh.receiveShadow = true;
+    baseMesh.castShadow = !b.bloqueado;
+    grupo.add(baseMesh);
+
+    // Detalhes 3D específicos por tipo de terreno
+    // (bloco de mata nativa usa só a cor verde PAL.mata — sem capa nem flores)
+    if (!b.bloqueado && b.fertilidade > 0.6 && b.poluicao < 0.3 && !b.nativo) {
+      // Sulcos de terra arada para plantio (furrows agrícolas)
+      for (var s = -1; s <= 1; s++) {
+        var sulco = new THREE.Mesh(
+          new THREE.BoxGeometry(TILE * 0.9, 0.035, 0.14),
+          materialBase(0x4a3420, 'soil', { roughness: 0.92 })
+        );
+        sulco.position.set(0, 0.16, s * 0.28);
+        sulco.receiveShadow = true;
+        sulco.castShadow = true;
+        grupo.add(sulco);
+      }
+    } else if (!b.bloqueado && b.poluicao > 0.45) {
+      // Mancha de resíduos tóxicos e sucata
+      var mancha = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.28, 0.02, 7),
+        materialBase(0x32283a, null, { roughness: 0.6, metalness: 0.2 })
+      );
+      mancha.position.y = 0.155;
+      grupo.add(mancha);
+    }
+
+    grupo.userData.bloco = b;
+    grupo.userData.baseMesh = baseMesh;
+    return grupo;
+  }
+
+  // ===== PERSONAGEM AO EXTREMO (Fazendeiro Estilizado de Alta Fidelidade) =====
+  function criarPersonagemExtremo() {
+    var grupo = new THREE.Group();
+
+    // Sombra de contato suave no solo
+    var sombraGeo = new THREE.CircleGeometry(0.32, 20);
+    var sombraMat = new THREE.MeshBasicMaterial({
+      color: 0x07150e,
+      transparent: true,
+      opacity: 0.38,
+      depthWrite: false
+    });
+    var decalSombra = new THREE.Mesh(sombraGeo, sombraMat);
+    decalSombra.rotation.x = -Math.PI / 2;
+    // Sombra rente aos pés — o grupo fica a y=0.15 (topo do bloco),
+    // então o decal vai para y=0.005 local (0.155 no mundo, sem z-fight).
+    decalSombra.position.y = 0.005;
+    grupo.add(decalSombra);
+
+    // Pivot do tronco (para agachamento, respiração e balanço dinâmico)
+    // ALTURA DO RIG: sola fica a -0.455 do corpoPivot
+    // (perna -0.14 + sola -0.30 + meia-altura 0.015). Com o grupo no topo do
+    // bloco (y=0.15), o corpoPivot precisa estar a 0.46 para a sola encostar
+    // no chão sem afundar (0.15 + 0.46 - 0.455 = 0.155, ~topo do bloco).
+    var ALTURA_CORPO = 0.46;
+    var corpoPivot = new THREE.Group();
+    corpoPivot.position.y = ALTURA_CORPO;
+    grupo.add(corpoPivot);
+
+    // Materiais dedicados e texturizados
+    var peleMat = materialBase(0xf6d1b8, null, { roughness: 0.65 });
+    var jeansMat = materialBase(0x1d4673, 'fabric', { roughness: 0.82 });
+    var camisaMat = materialBase(0xc43b3b, 'fabric', { roughness: 0.76 });
+    var camisaEscura = materialBase(0x942727, 'fabric', { roughness: 0.8 });
+    var couroMat = materialBase(0x422614, 'bark', { roughness: 0.86 });
+    var botaMat = materialBase(0x2a170d, 'bark', { roughness: 0.9 });
+    var solaMat = materialBase(0x130a06, null, { roughness: 0.95 });
+    var ouroMat = materialBase(0xcca034, 'brushed', { metalness: 0.75, roughness: 0.28 });
+    var palhaMat = materialBase(0xddb654, 'brushed', { roughness: 0.82 });
+    var bandanaMat = materialBase(0xd83838, null, { roughness: 0.7 });
+    var cabeloMat = materialBase(0x382214, null, { roughness: 0.88 });
+    var olhoPretoMat = materialBase(0x111111, null, { roughness: 0.2 });
+    var olhoBrilhoMat = materialBase(0xffffff, null, { roughness: 0.1 });
+    var bochechaMat = materialBase(0xf49288, null, { roughness: 0.6, transparent: true, opacity: 0.65 });
+    var fitaMat = materialBase(0x6e1b20, null, { roughness: 0.75 });
+    var folhaChapeuMat = materialBase(0x56b038, 'leaf', { roughness: 0.6 });
+
+    // === TORSO & VESTIMENTA ===
+    var torso = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.32, 0.22), camisaMat);
+    torso.position.y = 0.02;
+    corpoPivot.add(torso);
+
+    // Gola da camisa
+    var gola = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.24), camisaEscura);
+    gola.position.set(0, 0.17, 0.01);
+    corpoPivot.add(gola);
+
+    // Lenço / Bandana vermelha no pescoço
+    var bandana = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.05, 8), bandanaMat);
+    bandana.position.set(0, 0.19, 0);
+    var bandanaNo = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), bandanaMat);
+    bandanaNo.position.set(0, 0.18, 0.12);
+    var bandanaPonta = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.09, 5), bandanaMat);
+    bandanaPonta.position.set(0.02, 0.13, 0.12);
+    bandanaPonta.rotation.z = 0.4;
+    corpoPivot.add(bandana, bandanaNo, bandanaPonta);
+
+    // Macacão Jeans (Overalls)
+    var macacaoBase = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.23), jeansMat);
+    macacaoBase.position.y = -0.07;
+    var macacaoBib = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.04), jeansMat);
+    macacaoBib.position.set(0, 0.04, 0.105);
+    var bolso = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.09, 0.02), materialBase(0x163458, null));
+    bolso.position.set(0, 0.02, 0.13);
+    var alcaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.24, 0.24), jeansMat);
+    alcaEsq.position.set(-0.1, 0.07, 0);
+    var alcaDir = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.24, 0.24), jeansMat);
+    alcaDir.position.set(0.1, 0.07, 0);
+    var fivelaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.03), ouroMat);
+    fivelaEsq.position.set(-0.1, 0.11, 0.115);
+    var fivelaDir = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.03), ouroMat);
+    fivelaDir.position.set(0.1, 0.11, 0.115);
+
+    // Cinto de couro com fivela
+    var cinto = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.04, 0.24), couroMat);
+    cinto.position.y = -0.14;
+    var fivelaCinto = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.03), ouroMat);
+    fivelaCinto.position.set(0, -0.14, 0.125);
+
+    corpoPivot.add(macacaoBase, macacaoBib, bolso, alcaEsq, alcaDir, fivelaEsq, fivelaDir, cinto, fivelaCinto);
+
+    // Mochila / bolsa de sementes nas costas
+    var bolsaCostas = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.12), couroMat);
+    bolsaCostas.position.set(0, 0.04, -0.14);
+    var bolsaAba = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.08, 0.04), materialBase(0x5a341a, null));
+    bolsaAba.position.set(0, 0.12, -0.19);
+    var mantaRolo = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.25, 8), materialBase(0x5e7552, null));
+    mantaRolo.rotation.z = Math.PI / 2;
+    mantaRolo.position.set(0, 0.18, -0.15);
+    corpoPivot.add(bolsaCostas, bolsaAba, mantaRolo);
+
+    // === CABEÇA & ROSTO ESTILIZADO ===
+    var pivotCabeca = new THREE.Group();
+    pivotCabeca.position.set(0, 0.32, 0);
+    corpoPivot.add(pivotCabeca);
+
+    var cabeca = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.24, 0.24), peleMat);
+    var orelhaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.05), peleMat);
+    orelhaEsq.position.set(-0.14, 0, 0);
+    var orelhaDir = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.07, 0.05), peleMat);
+    orelhaDir.position.set(0.14, 0, 0);
+
+    var nariz = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.04, 5), peleMat);
+    nariz.rotation.x = Math.PI / 2;
+    nariz.position.set(0, -0.01, 0.135);
+
+    var boca = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.015, 0.02), materialBase(0x8a3a30, null));
+    boca.position.set(0, -0.06, 0.125);
+
+    var bochechaEsq = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), bochechaMat);
+    bochechaEsq.position.set(-0.08, -0.03, 0.12);
+    bochechaEsq.scale.set(1, 0.6, 0.3);
+    var bochechaDir = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), bochechaMat);
+    bochechaDir.position.set(0.08, -0.03, 0.12);
+    bochechaDir.scale.set(1, 0.6, 0.3);
+
+    // Olhos expressivos com brilho de anime
+    var criarOlho = function (x) {
+      var gOlho = new THREE.Group();
+      var socket = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.05, 0.015), olhoPretoMat);
+      var iris = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.04, 0.018), materialBase(0x2f6b48, null));
+      iris.position.z = 0.002;
+      var brilho = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.016, 0.02), olhoBrilhoMat);
+      brilho.position.set(0.01, 0.01, 0.004);
+      var sobrancelha = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.015, 0.02), cabeloMat);
+      sobrancelha.position.set(0, 0.036, 0.004);
+      sobrancelha.rotation.z = x < 0 ? -0.15 : 0.15;
+      gOlho.add(socket, iris, brilho, sobrancelha);
+      gOlho.position.set(x, 0.025, 0.125);
+      return gOlho;
+    };
+    var olhoEsq = criarOlho(-0.06);
+    var olhoDir = criarOlho(0.06);
+
+    // Cabelo trabalhado (franja estilosa, laterais e nuca)
+    var cabeloTopo = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.09, 0.27), cabeloMat);
+    cabeloTopo.position.y = 0.11;
+    var franjaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.04), cabeloMat);
+    franjaEsq.position.set(-0.06, 0.09, 0.13);
+    franjaEsq.rotation.z = -0.2;
+    var franjaDir = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.04), cabeloMat);
+    franjaDir.position.set(0.05, 0.08, 0.13);
+    franjaDir.rotation.z = 0.15;
+    var costeletaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.06), cabeloMat);
+    costeletaEsq.position.set(-0.135, 0.01, 0.06);
+    var costeletaDir = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.06), cabeloMat);
+    costeletaDir.position.set(0.135, 0.01, 0.06);
+    var cabeloNuca = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.06), cabeloMat);
+    cabeloNuca.position.set(0, 0.01, -0.12);
+
+    // === CHAPÉU DE PALHA DELUXE ===
+    var gChapeu = new THREE.Group();
+    gChapeu.position.y = 0.14;
+    gChapeu.rotation.x = -0.06;
+    var abaChapeu = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.025, 18), palhaMat);
+    var bordaAba = new THREE.Mesh(new THREE.TorusGeometry(0.37, 0.015, 6, 18), palhaMat);
+    bordaAba.rotation.x = Math.PI / 2;
+    var copaChapeu = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.21, 0.14, 14), palhaMat);
+    copaChapeu.position.y = 0.07;
+    var fitaChapeu = new THREE.Mesh(new THREE.CylinderGeometry(0.212, 0.215, 0.04, 14), fitaMat);
+    fitaChapeu.position.y = 0.03;
+    var folhaChapeu = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 5), folhaChapeuMat);
+    folhaChapeu.position.set(0.19, 0.08, 0.08);
+    folhaChapeu.rotation.set(-0.3, 0.2, -0.5);
+
+    gChapeu.add(abaChapeu, bordaAba, copaChapeu, fitaChapeu, folhaChapeu);
+
+    pivotCabeca.add(cabeca, orelhaEsq, orelhaDir, nariz, boca, bochechaEsq, bochechaDir,
+                    olhoEsq, olhoDir, cabeloTopo, franjaEsq, franjaDir, costeletaEsq, costeletaDir, cabeloNuca, gChapeu);
+
+    // === BRAÇOS E MÃOS (PIVOTS DE ANIMAÇÃO) ===
+    var pivotBracoEsq = new THREE.Group();
+    pivotBracoEsq.position.set(-0.21, 0.12, 0);
+    var mangaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), camisaMat);
+    mangaEsq.position.y = -0.04;
+    var dobraMangaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.03, 0.13), camisaEscura);
+    dobraMangaEsq.position.y = -0.11;
+    var antebracoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.09), peleMat);
+    antebracoEsq.position.y = -0.18;
+    var maoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.08), couroMat);
+    maoEsq.position.y = -0.27;
+    var polegarEsq = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.03), couroMat);
+    polegarEsq.position.set(0.05, -0.26, 0.02);
+    pivotBracoEsq.add(mangaEsq, dobraMangaEsq, antebracoEsq, maoEsq, polegarEsq);
+    corpoPivot.add(pivotBracoEsq);
+
+    var pivotBracoDir = new THREE.Group();
+    pivotBracoDir.position.set(0.21, 0.12, 0);
+    var mangaDir = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.12), camisaMat);
+    mangaDir.position.y = -0.04;
+    var dobraMangaDir = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.03, 0.13), camisaEscura);
+    dobraMangaDir.position.y = -0.11;
+    var antebracoDir = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.09), peleMat);
+    antebracoDir.position.y = -0.18;
+    var maoDir = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.08), couroMat);
+    maoDir.position.y = -0.27;
+    var polegarDir = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, 0.03), couroMat);
+    polegarDir.position.set(-0.05, -0.26, 0.02);
+    var ferramentaMao = new THREE.Group();
+    ferramentaMao.position.set(0, -0.27, 0.07);
+    pivotBracoDir.add(mangaDir, dobraMangaDir, antebracoDir, maoDir, polegarDir, ferramentaMao);
+    corpoPivot.add(pivotBracoDir);
+
+    // === PERNAS E BOTAS (PIVOTS DE ANIMAÇÃO) ===
+    var criarPerna = function (x) {
+      var pivotPerna = new THREE.Group();
+      pivotPerna.position.set(x, -0.14, 0);
+      var perna = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.22, 0.13), jeansMat);
+      perna.position.y = -0.1;
+      var barraCalca = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.04, 0.145), materialBase(0x285f94, null));
+      barraCalca.position.y = -0.2;
+      var botaCano = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.15), botaMat);
+      botaCano.position.set(0, -0.24, 0.01);
+      var botaBico = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.19), botaMat);
+      botaBico.position.set(0, -0.27, 0.03);
+      var sola = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.21), solaMat);
+      sola.position.set(0, -0.3, 0.03);
+      pivotPerna.add(perna, barraCalca, botaCano, botaBico, sola);
+      return pivotPerna;
+    };
+
+    var pivotPernaEsq = criarPerna(-0.09);
+    var pivotPernaDir = criarPerna(0.09);
+    corpoPivot.add(pivotPernaEsq, pivotPernaDir);
+
+    // Lanterna de cinto para navegação noturna aconchegante
+    var lanternaLuz = new THREE.PointLight(0xffdf90, 0, 8.5, 2.2);
+    lanternaLuz.position.set(0, 0.5, 0);
+    grupo.add(lanternaLuz);
+
+    // Sombras em todos os meshes
+    grupo.traverse(function (c) {
+      if (c.isMesh && c !== decalSombra) {
+        c.castShadow = true;
+        c.receiveShadow = true;
+      }
+    });
+
+    fazPartes = {
+      root: grupo,
+      corpoPivot: corpoPivot,
+      cabeca: pivotCabeca,
+      pernaEsq: pivotPernaEsq,
+      pernaDir: pivotPernaDir,
+      bracoEsq: pivotBracoEsq,
+      bracoDir: pivotBracoDir,
+      ferramentaMao: ferramentaMao,
+      sombra: decalSombra,
+      chapeuFolha: folhaChapeu,
+      lanterna: lanternaLuz
+    };
+
+    return grupo;
+  }
+
   function montarCena() {
     var palco = el('#stage');
     cena = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    camera = new THREE.PerspectiveCamera(42, 1, 0.1, 140);
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
+
+    // ATIVAR SOMBRAS SUAVES E MAPEAMENTO DE TOM
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.06;
+
     if (TEX) {
       TEX.setAnisotropy(renderer.capabilities.getMaxAnisotropy());
       var env = TEX.environment(renderer);
@@ -969,7 +1406,7 @@
     tabuleiro = new THREE.Group();
     cena.add(tabuleiro);
     cena.background = new THREE.Color(CORES_CEU.dia);
-    cena.fog = new THREE.Fog(CORES_CEU.dia, 12, 48);
+    cena.fog = new THREE.Fog(CORES_CEU.dia, 24, 85);
     grupoBlocos = new THREE.Group();
     grupoEstruturas = new THREE.Group();
     grupoDecoracoes = new THREE.Group();
@@ -978,137 +1415,89 @@
     var geo = geometriaBloco();
     estado.blocos.forEach(function (b) {
       var p = posicaoDe(b);
-      var malha = new THREE.Mesh(geo, materialBase(corDoSolo(b), 'soil'));
+      var malha = criarMalhaBlocoTerreno(b, geo);
       malha.position.set(p[0], b.bloqueado ? -0.08 : 0, p[2]);
-      malha.userData.bloco = b;
-      malha.receiveShadow = true;
       grupoBlocos.add(malha);
       malhasBloco.push(malha);
     });
 
-    // terreno base grande
-    var tamanhoBase = D.GRADE * STEP + 12;
-    var base = new THREE.Mesh(
+    // PLANALTO AGRÍCOLA MULTICAMADA (Ilha elevada com falésias de terra e pedra)
+    var tamanhoBase = D.GRADE * STEP + 14;
+    var basePlanalto = new THREE.Mesh(
       new THREE.BoxGeometry(tamanhoBase, 0.5, tamanhoBase),
-      materialBase(0x5a7a42, 'soil', { roughness: 0.95 })
+      materialBase(0x56783d, 'soil', { roughness: 0.92 })
     );
-    base.position.y = -0.45;
-    base.receiveShadow = true;
-    tabuleiro.add(base);
+    basePlanalto.position.y = -0.26;
+    basePlanalto.receiveShadow = true;
+    tabuleiro.add(basePlanalto);
 
-    // ===== DECORACAO DO MAPA =====
+    var baseSubsolo = new THREE.Mesh(
+      new THREE.BoxGeometry(tamanhoBase + 3.5, 0.9, tamanhoBase + 3.5),
+      materialBase(0x6b5a45, 'bark', { roughness: 0.96 })
+    );
+    baseSubsolo.position.y = -0.85;
+    baseSubsolo.receiveShadow = true;
+    tabuleiro.add(baseSubsolo);
+
+    var baseRocha = new THREE.Mesh(
+      new THREE.BoxGeometry(tamanhoBase + 7, 1.4, tamanhoBase + 7),
+      materialBase(0x52524e, 'brushed', { roughness: 0.98 })
+    );
+    baseRocha.position.y = -1.8;
+    baseRocha.receiveShadow = true;
+    tabuleiro.add(baseRocha);
+
+    // ===== DECORAÇÃO DO MAPA =====
     montarDecoracoes();
 
     malhaSelecao = new THREE.Mesh(
       new THREE.PlaneGeometry(TILE * 1.04, TILE * 1.04),
-      new THREE.MeshBasicMaterial({ color: 0xbfe6c6, transparent: true, opacity: 0.3, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: 0xbfe6c6, transparent: true, opacity: 0.32, depthWrite: false })
     );
     malhaSelecao.rotation.x = -Math.PI / 2;
     malhaSelecao.position.y = 0.17;
     malhaSelecao.visible = false;
     tabuleiro.add(malhaSelecao);
 
-    // ===== FAZENDEIRO COM ANIMACAO =====
-    var grupo = new THREE.Group();
-
-    // Pivot das pernas (para animacao)
-    var pivotPernaEsq = new THREE.Group();
-    pivotPernaEsq.position.set(-0.08, 0.2, 0);
-    var pernaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), materialBase(0x1a457b, null, { roughness: 0.8 }));
-    pernaEsq.position.y = -0.1;
-    pivotPernaEsq.add(pernaEsq);
-    // Bota
-    var botaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.06, 0.16), materialBase(0x3a2a1a, null, { roughness: 0.9 }));
-    botaEsq.position.set(0, -0.2, 0.02);
-    pivotPernaEsq.add(botaEsq);
-
-    var pivotPernaDir = new THREE.Group();
-    pivotPernaDir.position.set(0.08, 0.2, 0);
-    var pernaDir = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.2, 0.12), materialBase(0x1a457b, null, { roughness: 0.8 }));
-    pernaDir.position.y = -0.1;
-    pivotPernaDir.add(pernaDir);
-    var botaDir = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.06, 0.16), materialBase(0x3a2a1a, null, { roughness: 0.9 }));
-    botaDir.position.set(0, -0.2, 0.02);
-    pivotPernaDir.add(botaDir);
-
-    var corpo = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.3, 0.2), materialBase(0xcc4444, null, { roughness: 0.7 }));
-    corpo.position.y = 0.35;
-    var macacao = new THREE.Mesh(new THREE.BoxGeometry(0.33, 0.15, 0.21), materialBase(0x1a457b, null, { roughness: 0.8 }));
-    macacao.position.y = 0.25;
-    var alcaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.22), materialBase(0x1a457b, null, { roughness: 0.8 }));
-    alcaEsq.position.set(-0.1, 0.38, 0);
-    var alcaDir = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.22), materialBase(0x1a457b, null, { roughness: 0.8 }));
-    alcaDir.position.set(0.1, 0.38, 0);
-
-    // Pivot dos bracos (para animacao)
-    var pivotBracoEsq = new THREE.Group();
-    pivotBracoEsq.position.set(-0.21, 0.45, 0);
-    var bracoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.1), materialBase(0xd9b38c, null, { roughness: 0.6 }));
-    bracoEsq.position.y = -0.1;
-    var mangaEsq = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), materialBase(0xcc4444, null, { roughness: 0.7 }));
-    mangaEsq.position.y = -0.03;
-    pivotBracoEsq.add(bracoEsq, mangaEsq);
-
-    var pivotBracoDir = new THREE.Group();
-    pivotBracoDir.position.set(0.21, 0.45, 0);
-    var bracoDir = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.25, 0.1), materialBase(0xd9b38c, null, { roughness: 0.6 }));
-    bracoDir.position.y = -0.1;
-    var mangaDir = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.11), materialBase(0xcc4444, null, { roughness: 0.7 }));
-    mangaDir.position.y = -0.03;
-    // Ferramenta na mao direita
-    var ferramentaMao = new THREE.Group();
-    ferramentaMao.position.set(0, -0.22, 0.08);
-    pivotBracoDir.add(bracoDir, mangaDir, ferramentaMao);
-
-    var cabeca = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), materialBase(0xd9b38c, null, { roughness: 0.6 }));
-    cabeca.position.y = 0.62;
-    var cabelo = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.08, 0.24), materialBase(0x4a3a2a, null, { roughness: 0.9 }));
-    cabelo.position.y = 0.72;
-    var olhoEsq = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.01), materialBase(0x111111, null, { roughness: 0.3 }));
-    olhoEsq.position.set(-0.05, 0.64, 0.115);
-    var olhoDir = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.01), materialBase(0x111111, null, { roughness: 0.3 }));
-    olhoDir.position.set(0.05, 0.64, 0.115);
-    var nariz = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.04), materialBase(0xc9a37c, null, { roughness: 0.6 }));
-    nariz.position.set(0, 0.61, 0.115);
-    var chapeuAba = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.02, 16), materialBase(0xd8b64a, 'brushed', { roughness: 0.8 }));
-    chapeuAba.position.y = 0.76;
-    var chapeuCopo = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.16, 0.12, 12), materialBase(0xd8b64a, 'brushed', { roughness: 0.8 }));
-    chapeuCopo.position.y = 0.82;
-
-    grupo.add(
-      pivotPernaEsq, pivotPernaDir, corpo, macacao, alcaEsq, alcaDir,
-      pivotBracoEsq, pivotBracoDir,
-      cabeca, cabelo, olhoEsq, olhoDir, nariz,
-      chapeuAba, chapeuCopo
-    );
-
-    grupo.traverse(function(c) {
-      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
-    });
-
-    fazPartes = {
-      pernaEsq: pivotPernaEsq,
-      pernaDir: pivotPernaDir,
-      bracoEsq: pivotBracoEsq,
-      bracoDir: pivotBracoDir,
-      ferramentaMao: ferramentaMao
-    };
-
+    // ===== CRIAR PERSONAGEM DE ALTA FIDELIDADE =====
+    var grupo = criarPersonagemExtremo();
+    // Nasce em pé no topo do bloco central (evita spawn "enterrado"/flutuando)
+    grupo.position.set(0, ALTURA_CHAO, 0);
+    fisica.velocidade.set(0, 0, 0);
+    fisica.velocidadeY = 0;
+    fisica.noChao = true;
     tabuleiro.add(grupo);
     malhaFazendeiro = grupo;
     atualizarFerramentaMao();
 
-    luzes.hemi = new THREE.HemisphereLight(0xeaf6ec, 0x4a5a4e, 0.7);
+    // ILUMINAÇÃO AVANÇADA (Sol direcional com sombras suaves, cúpula celeste e luar)
+    luzes.hemi = new THREE.HemisphereLight(0xedf5fc, 0x485844, 0.65);
     cena.add(luzes.hemi);
-    luzes.sol = new THREE.DirectionalLight(0xffffff, 1.1);
-    luzes.sol.position.set(8, 14, 6);
+
+    luzes.sol = new THREE.DirectionalLight(0xfffaed, 1.25);
+    luzes.sol.position.set(16, 26, 14);
+    luzes.sol.castShadow = true;
+    luzes.sol.shadow.mapSize.width = 2048;
+    luzes.sol.shadow.mapSize.height = 2048;
+    luzes.sol.shadow.camera.near = 0.5;
+    luzes.sol.shadow.camera.far = 110;
+    var raioSombra = (D.GRADE / 2 + 8) * STEP;
+    luzes.sol.shadow.camera.left = -raioSombra;
+    luzes.sol.shadow.camera.right = raioSombra;
+    luzes.sol.shadow.camera.top = raioSombra;
+    luzes.sol.shadow.camera.bottom = -raioSombra;
+    luzes.sol.shadow.bias = -0.00035;
+    luzes.sol.shadow.normalBias = 0.02;
     cena.add(luzes.sol);
-    luzes.luar = new THREE.DirectionalLight(0x9fb8d8, 0.25);
-    luzes.luar.position.set(-6, 8, -7);
+
+    luzes.luar = new THREE.DirectionalLight(0x8cb0dc, 0.3);
+    luzes.luar.position.set(-16, 20, -14);
     cena.add(luzes.luar);
 
+    luzes.lanterna = fazPartes.lanterna;
+
     montarChuva();
-    ajustarCamera(0.6, 0.72, 26);
+    ajustarCamera(0.6, 0.72, 28);
   }
 
   // ===== FUNCAO PARA CRIAR ARVORES DECORATIVAS =====
@@ -1309,102 +1698,248 @@
     return g;
   }
 
+  var nuvens = [];
+
+  function criarCercaPerimetro() {
+    var g = new THREE.Group();
+    var matPoste = materialBase(0x6e4a2c, 'bark', { roughness: 0.95 });
+    var matTrilho = materialBase(0x825c38, 'bark', { roughness: 0.92 });
+    var limite = (D.GRADE * STEP) / 2 + 0.55;
+    var passo = 1.25;
+    var altPoste = 0.52;
+    var rPoste = 0.05;
+
+    function addPoste(px, pz) {
+      var p = new THREE.Mesh(
+        new THREE.CylinderGeometry(rPoste * 0.9, rPoste, altPoste, 6),
+        matPoste
+      );
+      p.position.set(px, altPoste / 2, pz);
+      p.castShadow = true;
+      p.receiveShadow = true;
+      g.add(p);
+    }
+
+    function addTrilho(x1, z1, x2, z2, y) {
+      var dx = x2 - x1;
+      var dz = z2 - z1;
+      var len = Math.sqrt(dx * dx + dz * dz);
+      var ang = Math.atan2(dx, dz);
+      var trilho = new THREE.Mesh(
+        new THREE.BoxGeometry(0.045, 0.055, len),
+        matTrilho
+      );
+      trilho.position.set((x1 + x2) / 2, y, (z1 + z2) / 2);
+      trilho.rotation.y = ang;
+      trilho.castShadow = true;
+      trilho.receiveShadow = true;
+      g.add(trilho);
+    }
+
+    var coords = [];
+    for (var c = -limite; c <= limite + 0.01; c += passo) coords.push(c);
+
+    // Norte e Sul
+    for (var i = 0; i < coords.length; i++) {
+      var cx = coords[i];
+      if (Math.abs(cx) < 1.3) continue; // abertura do portão
+      addPoste(cx, -limite);
+      addPoste(cx, limite);
+      if (i < coords.length - 1 && Math.abs(coords[i + 1]) >= 1.3 && !(cx < -1.3 && coords[i + 1] > -1.3)) {
+        addTrilho(cx, -limite, coords[i + 1], -limite, 0.22);
+        addTrilho(cx, -limite, coords[i + 1], -limite, 0.42);
+        addTrilho(cx, limite, coords[i + 1], limite, 0.22);
+        addTrilho(cx, limite, coords[i + 1], limite, 0.42);
+      }
+    }
+
+    // Leste e Oeste
+    for (var j = 0; j < coords.length; j++) {
+      var cz = coords[j];
+      if (Math.abs(cz) < 1.3) continue; // abertura do portão
+      addPoste(-limite, cz);
+      addPoste(limite, cz);
+      if (j < coords.length - 1 && Math.abs(coords[j + 1]) >= 1.3 && !(cz < -1.3 && coords[j + 1] > -1.3)) {
+        addTrilho(-limite, cz, -limite, coords[j + 1], 0.22);
+        addTrilho(-limite, cz, -limite, coords[j + 1], 0.42);
+        addTrilho(limite, cz, limite, coords[j + 1], 0.22);
+        addTrilho(limite, cz, limite, coords[j + 1], 0.42);
+      }
+    }
+
+    return g;
+  }
+
+  function criarNuvensCeu() {
+    var g = new THREE.Group();
+    nuvens = [];
+    var matNuvem = new THREE.MeshLambertMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.82
+    });
+
+    for (var n = 0; n < 8; n++) {
+      var nuvem = new THREE.Group();
+      var bolhas = 3 + Math.floor(Math.random() * 3);
+      for (var b = 0; b < bolhas; b++) {
+        var r = 1.4 + Math.random() * 1.6;
+        var p = new THREE.Mesh(new THREE.DodecahedronGeometry(r, 1), matNuvem);
+        p.position.set(
+          (b - bolhas / 2) * 1.8,
+          (Math.random() - 0.5) * 0.4,
+          (Math.random() - 0.5) * 0.8
+        );
+        p.scale.y = 0.52;
+        nuvem.add(p);
+      }
+      var nx = (Math.random() - 0.5) * 65;
+      var ny = 17 + Math.random() * 8;
+      var nz = (Math.random() - 0.5) * 65;
+      nuvem.position.set(nx, ny, nz);
+      nuvem.userData.velocidade = 0.35 + Math.random() * 0.45;
+      g.add(nuvem);
+      nuvens.push(nuvem);
+    }
+    return g;
+  }
+
+  function criarEfeitoCorte(x, y, z) {
+    var geo = new THREE.BoxGeometry(0.045, 0.045, 0.045);
+    var mat = materialBase(0x8a5a32, null);
+    for (var i = 0; i < 12; i++) {
+      var p = new THREE.Mesh(geo, mat);
+      p.position.set(
+        x + (Math.random() - 0.5) * 0.3,
+        y + Math.random() * 0.3,
+        z + (Math.random() - 0.5) * 0.3
+      );
+      p.userData = {
+        vida: 0.8 + Math.random() * 0.4,
+        velocidade: 0.8 + Math.random() * 0.6,
+        vx: (Math.random() - 0.5) * 1.6,
+        vz: (Math.random() - 0.5) * 1.6
+      };
+      tabuleiro.add(p);
+      modoConstrucao.particulas.push(p);
+    }
+  }
+
+  function cortarArvore(arvore) {
+    if (!arvore) return;
+    animarGolpeFerramenta('machado');
+    var pos = arvore.position;
+    criarEfeitoCorte(pos.x, pos.y + 0.6, pos.z);
+
+    obstaculos = obstaculos.filter(function (obs) {
+      return obs.arvore !== arvore;
+    });
+
+    discardarObjeto(arvore);
+
+    estado.dinheiro += 20;
+    C.ganharXp(estado, 15);
+    aviso('Arvore cortada com sucesso! +$20 e +15 XP.', false);
+    atualizarUI();
+    C.salvar(estado);
+  }
+
+  function animarGolpeFerramenta(tipo) {
+    animacaoAcao.ativa = true;
+    animacaoAcao.tempo = 0;
+    animacaoAcao.duracao = 0.3;
+    animacaoAcao.tipo = tipo || (estado ? estado.ferramenta : 'machado');
+  }
+
+  function criarPoeiraPasso(x, z) {
+    if (particulasPoeira.length > 25) return;
+    var matPoeira = new THREE.MeshBasicMaterial({
+      color: 0xc8b898,
+      transparent: true,
+      opacity: 0.45,
+      depthWrite: false
+    });
+    var p = new THREE.Mesh(new THREE.SphereGeometry(0.045, 4, 4), matPoeira);
+    p.position.set(x + (Math.random() - 0.5) * 0.12, 0.03, z + (Math.random() - 0.5) * 0.12);
+    p.userData = { vida: 0.35, maxVida: 0.35, vy: 0.2 + Math.random() * 0.15 };
+    tabuleiro.add(p);
+    particulasPoeira.push(p);
+  }
+
   // ===== FUNCAO PRINCIPAL PARA MONTAR DECORACOES =====
   function montarDecoracoes() {
-    // preserva as colisões das construções do modo construção
     obstaculos = obstaculos.filter(function (obs) { return !obs.construcao; });
-    
-    var raioMapa = D.GRADE * STEP / 2 + 6;
-    var distanciaMontanha = raioMapa + 8;
-    
-    // === MONTANHAS AO REDOR (8 montanhas grandes) ===
+
+    // Cerca de madeira circundando o perímetro da fazenda
+    grupoDecoracoes.add(criarCercaPerimetro());
+
+    // Nuvens estilizadas flutuando suavemente no céu
+    cena.add(criarNuvensCeu());
+
+    var bordaFazenda = (D.GRADE * STEP) / 2 + 1.2; // 10.2
+    var raioMapa = bordaFazenda + 7; // 17.2
+    var distanciaMontanha = raioMapa + 10; // 27.2
+
+    // === MONTANHAS AO REDOR (8 montanhas imponentes) ===
     var angulosMontanha = [0, 45, 90, 135, 180, 225, 270, 315];
-    angulosMontanha.forEach(function(angulo) {
+    angulosMontanha.forEach(function (angulo) {
       var rad = angulo * Math.PI / 180;
       var x = Math.cos(rad) * distanciaMontanha;
       var z = Math.sin(rad) * distanciaMontanha;
-      var altura = 10 + Math.random() * 8;
-      var largura = 6 + Math.random() * 4;
+      var altura = 12 + Math.random() * 9;
+      var largura = 7 + Math.random() * 5;
       grupoDecoracoes.add(criarMontanha(x, z, largura, altura));
     });
-    
-    // === MONTANHAS MENORES (16 colinas) ===
+
+    // === COLINAS SECUNDÁRIAS (16 colinas) ===
     for (var i = 0; i < 16; i++) {
-      var angulo = (i / 16) * Math.PI * 2 + Math.random() * 0.3;
-      var distancia = raioMapa + 4 + Math.random() * 6;
+      var angulo = (i / 16) * Math.PI * 2 + Math.random() * 0.25;
+      var distancia = raioMapa + 4 + Math.random() * 8;
       var x = Math.cos(angulo) * distancia;
       var z = Math.sin(angulo) * distancia;
-      var altura = 4 + Math.random() * 5;
-      var largura = 3 + Math.random() * 2;
+      var altura = 5 + Math.random() * 6;
+      var largura = 4 + Math.random() * 3;
       grupoDecoracoes.add(criarMontanha(x, z, largura, altura));
     }
-    
-    // === ARVORES AO REDOR DO MAPA (40-50 árvores) ===
-    var numArvores = 40 + Math.floor(Math.random() * 10);
-    for (var i = 0; i < numArvores; i++) {
-      var angulo = Math.random() * Math.PI * 2;
-      var distancia = raioMapa + Math.random() * 4;
-      var x = Math.cos(angulo) * distancia;
-      var z = Math.sin(angulo) * distancia;
-      var escala = 0.6 + Math.random() * 0.8;
-      grupoDecoracoes.add(criarArvore(x, z, escala));
+
+    // === BOSQUE EXTERNO DE ÁRVORES (50 árvores na orla externa) ===
+    var numArvores = 50 + Math.floor(Math.random() * 12);
+    for (var a = 0; a < numArvores; a++) {
+      var ang = Math.random() * Math.PI * 2;
+      var dist = bordaFazenda + 1.2 + Math.random() * 6.5;
+      var ax = Math.cos(ang) * dist;
+      var az = Math.sin(ang) * dist;
+      var escala = 0.65 + Math.random() * 0.75;
+      grupoDecoracoes.add(criarArvore(ax, az, escala));
     }
-    
-    // === ARVORES DENTRO DA AREA JOGAVEL (espaçadas) ===
-    for (var i = 0; i < 15; i++) {
-      var x = (Math.random() - 0.5) * raioMapa * 0.9;
-      var z = (Math.random() - 0.5) * raioMapa * 0.9;
-      
-      // Verificar se não está muito perto do centro
-      if (Math.sqrt(x * x + z * z) > 3) {
-        var escala = 0.5 + Math.random() * 0.6;
-        grupoDecoracoes.add(criarArvore(x, z, escala));
-      }
+
+    // === ROCHAS NO PERÍMETRO EXTERNO (25 rochas) ===
+    for (var r = 0; r < 25; r++) {
+      var rang = Math.random() * Math.PI * 2;
+      var rdist = bordaFazenda + 1.0 + Math.random() * 5.5;
+      var rx = Math.cos(rang) * rdist;
+      var rz = Math.sin(rang) * rdist;
+      var rescala = 0.7 + Math.random() * 1.1;
+      grupoDecoracoes.add(criarRocha(rx, rz, rescala));
     }
-    
-    // === FLORES ESPALHADAS (80-100 flores) ===
-    var numFlores = 80 + Math.floor(Math.random() * 20);
-    for (var i = 0; i < numFlores; i++) {
-      var x = (Math.random() - 0.5) * raioMapa * 0.95;
-      var z = (Math.random() - 0.5) * raioMapa * 0.95;
-      grupoDecoracoes.add(criarFlor(x, z));
+
+    // === ARBUSTOS NO PERÍMETRO (35 arbustos) ===
+    for (var b = 0; b < 35; b++) {
+      var bang = Math.random() * Math.PI * 2;
+      var bdist = bordaFazenda + 0.6 + Math.random() * 5.0;
+      var bx = Math.cos(bang) * bdist;
+      var bz = Math.sin(bang) * bdist;
+      grupoDecoracoes.add(criarArbusto(bx, bz));
     }
-    
-    // === ARBUSTOS (30-40 arbustos) ===
-    var numArbustos = 30 + Math.floor(Math.random() * 10);
-    for (var i = 0; i < numArbustos; i++) {
-      var x = (Math.random() - 0.5) * raioMapa * 0.9;
-      var z = (Math.random() - 0.5) * raioMapa * 0.9;
-      grupoDecoracoes.add(criarArbusto(x, z));
+
+    // === FLORES SILVESTRES NO PERÍMETRO (90 flores coloridas) ===
+    for (var f = 0; f < 90; f++) {
+      var fang = Math.random() * Math.PI * 2;
+      var fdist = bordaFazenda + 0.5 + Math.random() * 5.2;
+      var fx = Math.cos(fang) * fdist;
+      var fz = Math.sin(fang) * fdist;
+      grupoDecoracoes.add(criarFlor(fx, fz));
     }
-    
-    // === ROCHAS (20-30 rochas) ===
-    var numRochas = 20 + Math.floor(Math.random() * 10);
-    for (var i = 0; i < numRochas; i++) {
-      var angulo = Math.random() * Math.PI * 2;
-      var distancia = raioMapa * 0.5 + Math.random() * raioMapa * 0.4;
-      var x = Math.cos(angulo) * distancia;
-      var z = Math.sin(angulo) * distancia;
-      var escala = 0.8 + Math.random() * 1.2;
-      grupoDecoracoes.add(criarRocha(x, z, escala));
-    }
-    
-    // === GRAMA ALTA (partículas decorativas) ===
-    var gramaPositions = new Float32Array(300 * 3);
-    for (var i = 0; i < 300; i++) {
-      gramaPositions[i * 3] = (Math.random() - 0.5) * raioMapa;
-      gramaPositions[i * 3 + 1] = 0.1 + Math.random() * 0.2;
-      gramaPositions[i * 3 + 2] = (Math.random() - 0.5) * raioMapa;
-    }
-    var gramaGeo = new THREE.BufferGeometry();
-    gramaGeo.setAttribute('position', new THREE.BufferAttribute(gramaPositions, 3));
-    var grama = new THREE.Points(gramaGeo, new THREE.PointsMaterial({
-      color: 0x6a9a5a,
-      size: 0.15,
-      transparent: true,
-      opacity: 0.6
-    }));
-    grupoDecoracoes.add(grama);
   }
 
   function montarChuva() {
@@ -1424,18 +1959,26 @@
     tabuleiro.add(chuva);
   }
 
-  function ajustarCamera(az, pol, dist) {
-    var alvoX = 0, alvoZ = 0;
+  var _camAlvoX = 0, _camAlvoZ = 0, _camAlvoY = 0;
+
+  function ajustarCamera(az, pol, dist, dt) {
+    var alvoX = 0, alvoY = 0, alvoZ = 0;
     if (malhaFazendeiro && (!livre || !livre.ligado)) {
       alvoX = malhaFazendeiro.position.x;
+      alvoY = malhaFazendeiro.position.y;
       alvoZ = malhaFazendeiro.position.z;
     }
+    // Câmera com lag suave — segue o fazendeiro com interpolação
+    var vel = dt ? Math.min(1, 8 * dt) : 1;
+    _camAlvoX += (alvoX - _camAlvoX) * vel;
+    _camAlvoY += (alvoY - _camAlvoY) * vel * 0.6; // Y mais lento para sentir o pulo
+    _camAlvoZ += (alvoZ - _camAlvoZ) * vel;
     camera.position.set(
-      alvoX + dist * Math.sin(pol) * Math.sin(az),
-      dist * Math.cos(pol),
-      alvoZ + dist * Math.sin(pol) * Math.cos(az)
+      _camAlvoX + dist * Math.sin(pol) * Math.sin(az),
+      dist * Math.cos(pol) + _camAlvoY * 0.4,
+      _camAlvoZ + dist * Math.sin(pol) * Math.cos(az)
     );
-    camera.lookAt(alvoX, 0, alvoZ);
+    camera.lookAt(_camAlvoX, _camAlvoY * 0.4, _camAlvoZ);
   }
 
   function atualizarFerramentaMao() {
@@ -1464,444 +2007,1042 @@
   }
 
   var FORMA_CULTURA = {
-    milho: { altura: 0.62, folhas: 5, cor: 0xd8b64a, espiga: true },
-    soja: { altura: 0.34, folhas: 6, cor: 0x9bb85c },
-    trigo: { altura: 0.44, folhas: 3, cor: 0xdcc98a, espiga: true },
-    hortalica: { altura: 0.22, folhas: 8, cor: 0x6fbf7a },
-    feija: { altura: 0.26, folhas: 7, cor: 0x8a6f4e },
-    girassol: { altura: 0.58, folhas: 4, cor: 0xe8b73c, flor: true }
+    milho: { altura: 0.68, folhas: 6, cor: 0xd8b64a, espiga: true },
+    soja: { altura: 0.38, folhas: 8, cor: 0x9bb85c },
+    trigo: { altura: 0.48, folhas: 4, cor: 0xdcc98a, espiga: true },
+    hortalica: { altura: 0.25, folhas: 9, cor: 0x6fbf7a },
+    feija: { altura: 0.32, folhas: 8, cor: 0x8a6f4e },
+    girassol: { altura: 0.65, folhas: 5, cor: 0xe8b73c, flor: true }
   };
 
   function malhaDoCultivo(cultivo) {
     var cultura = D.CULTURAS[cultivo.id];
-    var forma = FORMA_CULTURA[cultivo.id] || { altura: 0.35, folhas: 4, cor: cultura.cor };
+    var forma = FORMA_CULTURA[cultivo.id] || { altura: 0.38, folhas: 5, cor: cultura.cor };
     var pronto = cultivo.pronto;
     var avanco = Math.min(1, cultivo.progresso / cultura.dias);
     var altura = pronto ? forma.altura : forma.altura * (0.35 + avanco * 0.65);
 
     var g = new THREE.Group();
-    var caule = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.04, altura, 6),
-      materialBase(pronto ? 0x8a9a4a : 0x7f9a52, null, { roughness: 0.85 })
-    );
-    caule.position.y = altura / 2 + 0.15;
-    g.add(caule);
+    g.userData.cultivoId = cultivo.id;
 
-    var folhas = Math.max(1, Math.round(forma.folhas * (pronto ? 1 : avanco)));
-    for (var i = 0; i < folhas; i++) {
-      var ang = (i / folhas) * Math.PI * 2;
-      var folha = new THREE.Mesh(
-        new THREE.BoxGeometry(0.2, 0.015, 0.07),
-        materialBase(forma.cor, null, { roughness: 0.8 })
+    if (cultivo.id === 'girassol') {
+      // Girassol realista com caule forte, folhas largas e flor com pétalas e miolo escuro
+      var cauleG = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.045, altura, 7),
+        materialBase(0x4a7a3a, 'bark', { roughness: 0.85 })
       );
-      folha.position.set(Math.cos(ang) * 0.1, 0.15 + altura * (0.35 + 0.5 * (i / folhas)), Math.sin(ang) * 0.1);
-      folha.rotation.set(0.4, -ang, 0.2);
-      g.add(folha);
+      cauleG.position.y = altura / 2 + 0.15;
+      cauleG.castShadow = true;
+      g.add(cauleG);
+
+      // Folhas largas em pares
+      for (var f = 0; f < 4; f++) {
+        var angF = (f * Math.PI) / 2 + 0.3;
+        var folhaG = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18 * avanco, 0.02, 0.12 * avanco),
+          materialBase(0x3e7534, 'leaf', { roughness: 0.75 })
+        );
+        folhaG.position.set(Math.cos(angF) * 0.08, 0.15 + altura * (0.2 + f * 0.2), Math.sin(angF) * 0.08);
+        folhaG.rotation.set(0.3, -angF, 0.2);
+        folhaG.castShadow = true;
+        g.add(folhaG);
+      }
+
+      if (pronto || avanco > 0.5) {
+        // Flor grande virada ligeiramente para o sol
+        var gFlor = new THREE.Group();
+        gFlor.position.set(0, altura + 0.16, 0.04);
+        gFlor.rotation.x = 0.25;
+
+        // Miolo escuro de sementes
+        var miolo = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.08, 0.08, 0.03, 12),
+          materialBase(0x4a2e12, null, { roughness: 0.9 })
+        );
+        miolo.rotation.x = Math.PI / 2;
+        gFlor.add(miolo);
+
+        // Coroa de pétalas amarelas radiantes
+        var numPetalas = 12;
+        for (var p = 0; p < numPetalas; p++) {
+          var angP = (p / numPetalas) * Math.PI * 2;
+          var petala = new THREE.Mesh(
+            new THREE.ConeGeometry(0.03, 0.1, 4),
+            materialBase(0xf2ba24, null, { roughness: 0.4 })
+          );
+          petala.position.set(Math.cos(angP) * 0.1, Math.sin(angP) * 0.1, -0.01);
+          petala.rotation.z = angP - Math.PI / 2;
+          gFlor.add(petala);
+        }
+        gFlor.castShadow = true;
+        g.add(gFlor);
+      }
+    } else if (cultivo.id === 'milho') {
+      // Milharal com múltiplos colmos e espigas douradas
+      for (var colmo = -1; colmo <= 1; colmo += 2) {
+        var xOffset = colmo * 0.08;
+        var cauleM = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.02, 0.035, altura, 6),
+          materialBase(pronto ? 0x8a9e42 : 0x5a8f36, null, { roughness: 0.85 })
+        );
+        cauleM.position.set(xOffset, altura / 2 + 0.15, 0);
+        cauleM.castShadow = true;
+        g.add(cauleM);
+
+        // Folhas arqueadas compridas
+        for (var i = 0; i < 4; i++) {
+          var ang = (i * Math.PI) / 2 + colmo * 0.4;
+          var folhaM = new THREE.Mesh(
+            new THREE.BoxGeometry(0.24, 0.014, 0.08),
+            materialBase(0x4c8732, 'leaf', { roughness: 0.75 })
+          );
+          folhaM.position.set(xOffset + Math.cos(ang) * 0.12, 0.15 + altura * (0.3 + i * 0.18), Math.sin(ang) * 0.12);
+          folhaM.rotation.set(0.5, -ang, 0.3);
+          folhaM.castShadow = true;
+          g.add(folhaM);
+        }
+
+        if (pronto) {
+          // Espiga de milho dourada com palha protetora
+          var espiga = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.035, 0.04, 0.14, 8),
+            materialBase(0xe0b234, null, { roughness: 0.45 })
+          );
+          espiga.position.set(xOffset + 0.06, altura * 0.65 + 0.15, 0.04);
+          espiga.rotation.z = -0.35;
+          espiga.castShadow = true;
+          g.add(espiga);
+        }
+      }
+    } else if (cultivo.id === 'trigo') {
+      // Tufo denso de trigo dourado
+      for (var t = 0; t < 5; t++) {
+        var angT = (t / 5) * Math.PI * 2;
+        var rT = 0.08;
+        var cauleT = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.012, 0.018, altura, 5),
+          materialBase(pronto ? 0xdcc072 : 0x7da84a, null, { roughness: 0.85 })
+        );
+        cauleT.position.set(Math.cos(angT) * rT, altura / 2 + 0.15, Math.sin(angT) * rT);
+        cauleT.rotation.z = Math.sin(angT) * 0.08;
+        cauleT.castShadow = true;
+        g.add(cauleT);
+
+        if (pronto) {
+          // Espiga farta de grãos
+          var espigaT = new THREE.Mesh(
+            new THREE.ConeGeometry(0.03, 0.12, 6),
+            materialBase(0xcca044, null, { roughness: 0.6 })
+          );
+          espigaT.position.set(Math.cos(angT) * rT, altura + 0.16, Math.sin(angT) * rT);
+          espigaT.rotation.z = Math.sin(angT) * 0.15;
+          g.add(espigaT);
+        }
+      }
+    } else {
+      // Modelo genérico aprimorado (soja, hortaliça, feijão)
+      var caule = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.035, altura, 6),
+        materialBase(pronto ? 0x7fa248 : 0x5a8a42, null, { roughness: 0.85 })
+      );
+      caule.position.y = altura / 2 + 0.15;
+      caule.castShadow = true;
+      g.add(caule);
+
+      var folhas = Math.max(2, Math.round(forma.folhas * (pronto ? 1 : avanco)));
+      for (var k = 0; k < folhas; k++) {
+        var angK = (k / folhas) * Math.PI * 2;
+        var folha = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.015, 0.09),
+          materialBase(forma.cor, 'leaf', { roughness: 0.75 })
+        );
+        folha.position.set(Math.cos(angK) * 0.09, 0.15 + altura * (0.3 + 0.5 * (k / folhas)), Math.sin(angK) * 0.09);
+        folha.rotation.set(0.4, -angK, 0.2);
+        folha.castShadow = true;
+        g.add(folha);
+      }
     }
 
-    if (pronto && forma.flor) {
-      var flor = new THREE.Mesh(new THREE.SphereGeometry(0.11, 10, 8), materialBase(0xe8b73c, null, { roughness: 0.5 }));
-      flor.position.y = altura + 0.2;
-      flor.scale.set(1, 0.4, 1);
-      g.add(flor);
-    } else if (pronto && forma.espiga) {
-      var espiga = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), materialBase(forma.cor, null, { roughness: 0.55 }));
-      espiga.position.set(0.06, altura * 0.72, 0.04);
-      espiga.scale.set(0.8, 2.4, 0.8);
-      g.add(espiga);
-    }
     return g;
   }
 
-  function roda(raio, largura) {
-    var g = new THREE.Mesh(
-      new THREE.CylinderGeometry(raio, raio, largura, 12),
-      materialBase(0x2b2b2b, null, { roughness: 0.85 })
+  function roda(raio, largura, corPneu, corAro) {
+    var g = new THREE.Group();
+    // Pneu de borracha texturizada
+    var pneu = new THREE.Mesh(
+      new THREE.CylinderGeometry(raio, raio, largura, 16),
+      materialBase(corPneu || 0x1d1d1d, null, { roughness: 0.92, metalness: 0.05 })
     );
-    g.rotation.z = Math.PI / 2;
+    pneu.rotation.z = Math.PI / 2;
+    pneu.castShadow = true;
+    pneu.receiveShadow = true;
+    // Calota / aro central
+    var aro = new THREE.Mesh(
+      new THREE.CylinderGeometry(raio * 0.6, raio * 0.6, largura * 1.05, 12),
+      materialBase(corAro || 0xd4a742, 'brushed', { metalness: 0.65, roughness: 0.35 })
+    );
+    aro.rotation.z = Math.PI / 2;
+    // Cubo central do eixo
+    var cubo = new THREE.Mesh(
+      new THREE.CylinderGeometry(raio * 0.22, raio * 0.22, largura * 1.15, 8),
+      materialBase(0x333333, 'brushed', { metalness: 0.8, roughness: 0.2 })
+    );
+    cubo.rotation.z = Math.PI / 2;
+    g.add(pneu, aro, cubo);
     return g;
   }
 
   function caixaDe(cor, w, h, d, textura, y) {
     var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), materialBase(cor, textura));
     m.position.y = y;
+    m.castShadow = true;
+    m.receiveShadow = true;
     return m;
   }
 
+  // ===== VEÍCULOS DE ALTA FIDELIDADE (Trator Antigo & Trator Elétrico) =====
   function construirVeiculo(cor, eletrico) {
     var g = new THREE.Group();
-    g.add(caixaDe(cor, 0.34, 0.16, 0.44, 'brushed', 0.16));
-    var cabine = caixaDe(eletrico ? 0x3f6f9a : 0x8a4a2a, 0.24, 0.18, 0.2, 'brushed', 0.33);
-    cabine.position.z = 0.06;
-    g.add(cabine);
-    var frente = roda(0.09, 0.05);
-    frente.position.set(0.18, 0.1, 0.13);
-    var tras = roda(0.12, 0.08);
-    tras.position.set(0.18, 0.13, -0.13);
-    g.add(frente, tras);
-    var motor = caixaDe(eletrico ? 0x2f4a5a : 0x4a3a30, 0.12, 0.1, 0.14, null, 0.3);
-    motor.position.z = -0.16;
-    g.add(motor);
-    if (!eletrico) {
-      var escapamento = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.015, 0.02, 0.22, 6),
-        materialBase(0x6b6b6b, 'brushed', { metalness: 0.6, roughness: 0.5 })
-      );
-      escapamento.position.set(-0.1, 0.38, -0.16);
-      g.add(escapamento);
-    }
-    return g;
-  }
 
-  function construirDrone() {
-    var g = new THREE.Group();
-    g.add(caixaDe(0x3f5a68, 0.2, 0.08, 0.2, 'brushed', 0.34));
-    var hastes = [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]];
-    hastes.forEach(function (p) {
-      var braco = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.015, 0.02), materialBase(0x2f4450, 'brushed'));
-      braco.position.set(p[0] / 2, 0.34, p[1] / 2);
-      braco.lookAt(0, 0.34, 0);
-      var helice = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.008, 10), materialBase(0x9fc4d4, null, { transparent: true, opacity: 0.6 }));
-      helice.position.set(p[0], 0.36, p[1]);
-      g.add(braco, helice);
+    if (!eletrico) {
+      // === TRATOR ANTIGO CLÁSSICO ===
+      // Chassi robusto
+      var chassi = caixaDe(0x282c2e, 0.36, 0.12, 0.62, 'brushed', 0.14);
+      g.add(chassi);
+
+      // Capô cônico do motor em metal rústico
+      var capo = caixaDe(cor || 0x8a3a2a, 0.32, 0.2, 0.36, 'brushed', 0.28);
+      capo.position.z = 0.12;
+      // Grade frontal do radiador com acabamento cromado
+      var grade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.18, 0.03),
+        materialBase(0x8a9296, 'brushed', { metalness: 0.7, roughness: 0.35 })
+      );
+      grade.position.set(0, 0.28, 0.31);
+      // Faróis redondos com lentes emissivas brilhantes
+      var farolEsq = new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 8, 8),
+        materialBase(0xfff6c0, null, { emissive: 0xffe488, emissiveIntensity: 0.85 })
+      );
+      farolEsq.position.set(-0.13, 0.32, 0.31);
+      var farolDir = farolEsq.clone();
+      farolDir.position.x = 0.13;
+      g.add(capo, grade, farolEsq, farolDir);
+
+      // Chaminé de escapamento vertical alta com tampa corta-fagulha
+      var escapamento = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.024, 0.38, 8),
+        materialBase(0x3d4044, 'brushed', { metalness: 0.75, roughness: 0.4 })
+      );
+      escapamento.position.set(-0.12, 0.48, 0.18);
+      var tampaEscape = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.015, 8),
+        materialBase(0x222222, null, { metalness: 0.8 })
+      );
+      tampaEscape.position.set(-0.12, 0.68, 0.18);
+      tampaEscape.rotation.z = 0.35;
+      g.add(escapamento, tampaEscape);
+
+      // Posto do motorista: assento acolchoado e volante
+      var assento = caixaDe(0x1a1a1a, 0.22, 0.08, 0.18, null, 0.32);
+      assento.position.z = -0.16;
+      var encosto = caixaDe(0x1a1a1a, 0.22, 0.16, 0.04, null, 0.42);
+      encosto.position.z = -0.24;
+      var colunaVolante = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.015, 0.18, 6),
+        materialBase(0x444444, 'brushed')
+      );
+      colunaVolante.position.set(0, 0.36, -0.04);
+      colunaVolante.rotation.x = -0.4;
+      var volante = new THREE.Mesh(
+        new THREE.TorusGeometry(0.07, 0.012, 6, 12),
+        materialBase(0x111111, null, { roughness: 0.5 })
+      );
+      volante.position.set(0, 0.44, -0.07);
+      volante.rotation.x = Math.PI / 2 - 0.4;
+      g.add(assento, encosto, colunaVolante, volante);
+
+      // Para-lamas curvos sobre as rodas traseiras
+      var paralamasEsq = caixaDe(cor || 0x8a3a2a, 0.1, 0.04, 0.34, 'brushed', 0.4);
+      paralamasEsq.position.set(-0.21, 0.4, -0.16);
+      var paralamasDir = paralamasEsq.clone();
+      paralamasDir.position.x = 0.21;
+      g.add(paralamasEsq, paralamasDir);
+
+      // 4 RODAS COMPLETAS (Traseiras gigantes tratoradas + Dianteiras direcionais)
+      var rodaTraseiraEsq = roda(0.18, 0.09, 0x1d1d1d, 0xcca034);
+      rodaTraseiraEsq.position.set(-0.22, 0.18, -0.16);
+      var rodaTraseiraDir = roda(0.18, 0.09, 0x1d1d1d, 0xcca034);
+      rodaTraseiraDir.position.set(0.22, 0.18, -0.16);
+      var rodaDianteiraEsq = roda(0.1, 0.06, 0x1d1d1d, 0xcca034);
+      rodaDianteiraEsq.position.set(-0.19, 0.1, 0.18);
+      var rodaDianteiraDir = roda(0.1, 0.06, 0x1d1d1d, 0xcca034);
+      rodaDianteiraDir.position.set(0.19, 0.1, 0.18);
+      g.add(rodaTraseiraEsq, rodaTraseiraDir, rodaDianteiraEsq, rodaDianteiraDir);
+
+      // Engate traseiro com relha de arado duplo em aço
+      var engate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.04, 0.14),
+        materialBase(0x444444, 'brushed', { metalness: 0.8 })
+      );
+      engate.position.set(0, 0.12, -0.34);
+      var aradoLaminaEsq = new THREE.Mesh(
+        new THREE.ConeGeometry(0.07, 0.16, 4),
+        materialBase(0x8a9296, 'brushed', { metalness: 0.85, roughness: 0.25 })
+      );
+      aradoLaminaEsq.rotation.set(-0.5, 0, 0.4);
+      aradoLaminaEsq.position.set(-0.09, 0.06, -0.4);
+      var aradoLaminaDir = aradoLaminaEsq.clone();
+      aradoLaminaDir.position.x = 0.09;
+      aradoLaminaDir.rotation.z = -0.4;
+      g.add(engate, aradoLaminaEsq, aradoLaminaDir);
+
+    } else {
+      // === TRATOR ELÉTRICO ECO-MODERNO ===
+      // Carroceria aerodinâmica verde-esmeralda pérola
+      var chassiE = caixaDe(0x1e3630, 0.38, 0.14, 0.64, 'brushed', 0.14);
+      var carroceria = caixaDe(0x2da882, 0.34, 0.18, 0.42, 'brushed', 0.26);
+      carroceria.position.z = 0.08;
+
+      // Cockpit panorâmico em bolha de vidro translúcido
+      var cabineVidro = new THREE.Mesh(
+        new THREE.BoxGeometry(0.28, 0.2, 0.26),
+        materialBase(0x88dcf4, null, { transparent: true, opacity: 0.5, metalness: 0.2, roughness: 0.15 })
+      );
+      cabineVidro.position.set(0, 0.42, -0.06);
+
+      // Painel solar integrado no teto da cabine
+      var tetoSolar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.02, 0.24),
+        materialBase(0x184872, 'solar', { metalness: 0.6, roughness: 0.2 })
+      );
+      tetoSolar.position.set(0, 0.53, -0.06);
+
+      // Barra frontal de LED contínua futurista
+      var lightbar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.32, 0.035, 0.02),
+        materialBase(0x66ffcc, null, { emissive: 0x44ffaa, emissiveIntensity: 1.0 })
+      );
+      lightbar.position.set(0, 0.26, 0.3);
+
+      // Núcleo de energia verde visível nas laterais
+      var nucleoEsq = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8),
+        materialBase(0x00e5ff, null, { emissive: 0x00c8e0, emissiveIntensity: 0.9 })
+      );
+      nucleoEsq.rotation.x = Math.PI / 2;
+      nucleoEsq.position.set(-0.18, 0.22, 0);
+      var nucleoDir = nucleoEsq.clone();
+      nucleoDir.position.x = 0.18;
+
+      // 4 Rodas futuristas com anéis de neon ciano
+      var rodaEEsq = roda(0.17, 0.08, 0x1a2420, 0x33e0aa);
+      rodaEEsq.position.set(-0.21, 0.17, -0.16);
+      var rodaEDir = roda(0.17, 0.08, 0x1a2420, 0x33e0aa);
+      rodaEDir.position.set(0.21, 0.17, -0.16);
+      var rodaDFrenteEsq = roda(0.11, 0.06, 0x1a2420, 0x33e0aa);
+      rodaDFrenteEsq.position.set(-0.19, 0.11, 0.18);
+      var rodaDFrenteDir = roda(0.11, 0.06, 0x1a2420, 0x33e0aa);
+      rodaDFrenteDir.position.set(0.19, 0.11, 0.18);
+
+      g.add(chassiE, carroceria, cabineVidro, tetoSolar, lightbar, nucleoEsq, nucleoDir,
+            rodaEEsq, rodaEDir, rodaDFrenteEsq, rodaDFrenteDir);
+    }
+
+    g.traverse(function (c) {
+      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
     });
     return g;
   }
 
-  function construirColheitadeira() {
+  // ===== DRONE QUADCOPTER PROFISSIONAL =====
+  function construirDrone() {
     var g = new THREE.Group();
-    g.add(caixaDe(0xc07a2a, 0.4, 0.24, 0.5, 'brushed', 0.2));
-    var cabine = caixaDe(0x2f4450, 0.22, 0.16, 0.22, 'brushed', 0.4);
-    cabine.position.z = 0.1;
-    var ponta = caixaDe(0x8a5a2a, 0.5, 0.06, 0.06, 'brushed', 0.08);
-    ponta.position.z = 0.36;
-    var r1 = roda(0.11, 0.07); r1.position.set(0.2, 0.12, 0.16);
-    var r2 = roda(0.13, 0.1); r2.position.set(0.2, 0.14, -0.16);
-    g.add(cabine, ponta, r1, r2);
+
+    // Fuselagem central aerodinâmica em fibra de carbono
+    var corpo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.13, 0.08, 8),
+      materialBase(0x232830, 'brushed', { metalness: 0.6, roughness: 0.35 })
+    );
+    corpo.position.y = 0.35;
+    var domo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 8, 6),
+      materialBase(0x3a4855, null, { roughness: 0.4 })
+    );
+    domo.position.y = 0.39;
+    domo.scale.set(1, 0.5, 1);
+    g.add(corpo, domo);
+
+    // 4 braços de carbono em X
+    var helices = [];
+    var hastes = [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]];
+    hastes.forEach(function (p, idx) {
+      var braco = new THREE.Mesh(
+        new THREE.BoxGeometry(0.24, 0.02, 0.025),
+        materialBase(0x181c22, 'brushed', { metalness: 0.7 })
+      );
+      braco.position.set(p[0] / 2, 0.35, p[1] / 2);
+      braco.lookAt(0, 0.35, 0);
+
+      // Motor pod na ponta
+      var motor = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.045, 8),
+        materialBase(0x445566, 'brushed', { metalness: 0.8 })
+      );
+      motor.position.set(p[0], 0.36, p[1]);
+
+      // Hélice dupla rotativa
+      var helice = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.006, 0.028),
+        materialBase(0xd8eaf4, null, { roughness: 0.3 })
+      );
+      helice.position.set(p[0], 0.39, p[1]);
+      helices.push(helice);
+
+      // Disco semitransparente de borrão da rotação
+      var discoBorrao = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 0.003, 12),
+        materialBase(0x9fc8dc, null, { transparent: true, opacity: 0.45, depthWrite: false })
+      );
+      discoBorrao.position.set(p[0], 0.39, p[1]);
+
+      // LED indicador de navegação
+      var corLed = idx % 2 === 0 ? 0x22ff44 : 0xff2222;
+      var led = new THREE.Mesh(
+        new THREE.SphereGeometry(0.015, 6, 6),
+        materialBase(corLed, null, { emissive: corLed, emissiveIntensity: 1.0 })
+      );
+      led.position.set(p[0], 0.34, p[1]);
+
+      g.add(braco, motor, helice, discoBorrao, led);
+    });
+
+    // Câmera gimbal esférica embaixo da fuselagem
+    var gimbal = new THREE.Mesh(
+      new THREE.SphereGeometry(0.04, 8, 8),
+      materialBase(0x111111, null, { roughness: 0.1, metalness: 0.9 })
+    );
+    gimbal.position.set(0, 0.29, 0.05);
+
+    // Reservatório de sementes / pulverizador ecológico
+    var tanqueSementes = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.065, 0.055, 0.1, 8),
+      materialBase(0x486475, 'brushed', { metalness: 0.4 })
+    );
+    tanqueSementes.position.set(0, 0.28, -0.03);
+
+    // Trem de pouso duplo tipo esqui
+    var esquiEsq = new THREE.Mesh(
+      new THREE.BoxGeometry(0.015, 0.015, 0.3),
+      materialBase(0x222222, null)
+    );
+    esquiEsq.position.set(-0.1, 0.22, 0);
+    var esquiDir = esquiEsq.clone();
+    esquiDir.position.x = 0.1;
+    var pernaEsqui1 = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.1, 4), materialBase(0x222222));
+    pernaEsqui1.position.set(-0.1, 0.27, 0.08);
+    var pernaEsqui2 = pernaEsqui1.clone();
+    pernaEsqui2.position.z = -0.08;
+    var pernaEsqui3 = pernaEsqui1.clone();
+    pernaEsqui3.position.x = 0.1;
+    var pernaEsqui4 = pernaEsqui2.clone();
+    pernaEsqui4.position.x = 0.1;
+
+    g.add(gimbal, tanqueSementes, esquiEsq, esquiDir, pernaEsqui1, pernaEsqui2, pernaEsqui3, pernaEsqui4);
+    g.userData.helices = helices;
+
+    g.traverse(function (c) {
+      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+    });
     return g;
   }
 
+  // ===== COLHEITADEIRA SOLAR GIGANTE =====
+  function construirColheitadeira() {
+    var g = new THREE.Group();
+
+    // Chassi principal em tom ouro colheita
+    var corpo = caixaDe(0xd97e28, 0.46, 0.28, 0.62, 'brushed', 0.26);
+    g.add(corpo);
+
+    // Cabine do operador panorâmica elevada
+    var cabine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.28, 0.22, 0.26),
+      materialBase(0x2a3e4c, null, { roughness: 0.3 })
+    );
+    cabine.position.set(0, 0.46, 0.12);
+    // Vidro da cabine
+    var vidro = new THREE.Mesh(
+      new THREE.BoxGeometry(0.26, 0.16, 0.08),
+      materialBase(0x8cd8f0, null, { transparent: true, opacity: 0.55 })
+    );
+    vidro.position.set(0, 0.46, 0.24);
+    // Faróis de milha no teto
+    var barraFarol = new THREE.Mesh(
+      new THREE.BoxGeometry(0.26, 0.03, 0.04),
+      materialBase(0xfff6c0, null, { emissive: 0xffe488, emissiveIntensity: 0.9 })
+    );
+    barraFarol.position.set(0, 0.58, 0.24);
+    g.add(cabine, vidro, barraFarol);
+
+    // Plataforma de corte frontal com dentes de colheita
+    var plataforma = caixaDe(0x8a5220, 0.64, 0.08, 0.16, 'brushed', 0.12);
+    plataforma.position.z = 0.42;
+    var dentes = new THREE.Mesh(
+      new THREE.BoxGeometry(0.66, 0.02, 0.06),
+      materialBase(0x9aa4a8, 'brushed', { metalness: 0.8, roughness: 0.3 })
+    );
+    dentes.position.set(0, 0.1, 0.51);
+
+    // Molinete giratório frontal (carretel que puxa as plantas)
+    var molineteEixo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.02, 0.62, 8),
+      materialBase(0x333333, 'brushed')
+    );
+    molineteEixo.rotation.z = Math.PI / 2;
+    molineteEixo.position.set(0, 0.22, 0.46);
+    // Pás do molinete
+    var molinetePas = new THREE.Group();
+    for (var m = 0; m < 4; m++) {
+      var pa = new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 0.015, 0.06),
+        materialBase(0xb86820, 'brushed')
+      );
+      pa.rotation.x = (m * Math.PI) / 2;
+      molinetePas.add(pa);
+    }
+    molinetePas.position.copy(molineteEixo.position);
+    g.add(plataforma, dentes, molineteEixo, molinetePas);
+    g.userData.molinete = molinetePas;
+
+    // Tanque graneleiro no topo com grãos dourados
+    var graos = new THREE.Mesh(
+      new THREE.BoxGeometry(0.38, 0.06, 0.28),
+      materialBase(0xd8b64a, 'soil', { roughness: 0.7 })
+    );
+    graos.position.set(0, 0.42, -0.14);
+    g.add(graos);
+
+    // Tubo de descarga basculante lateral comprido
+    var tuboDescarga = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.035, 0.48, 8),
+      materialBase(0xd97e28, 'brushed')
+    );
+    tuboDescarga.position.set(-0.28, 0.44, -0.16);
+    tuboDescarga.rotation.set(0.3, 0, 0.8);
+    g.add(tuboDescarga);
+
+    // 4 Rodas agrícolas pesadas (dianteiras enormes tracionadas e traseiras menores)
+    var rodaFEsq = roda(0.18, 0.11, 0x1d1d1d, 0xd4a742);
+    rodaFEsq.position.set(-0.27, 0.18, 0.16);
+    var rodaFDir = roda(0.18, 0.11, 0x1d1d1d, 0xd4a742);
+    rodaFDir.position.set(0.27, 0.18, 0.16);
+    var rodaTEsq = roda(0.13, 0.09, 0x1d1d1d, 0xd4a742);
+    rodaTEsq.position.set(-0.25, 0.13, -0.22);
+    var rodaTDir = roda(0.13, 0.09, 0x1d1d1d, 0xd4a742);
+    rodaTDir.position.set(0.25, 0.13, -0.22);
+    g.add(rodaFEsq, rodaFDir, rodaTEsq, rodaTDir);
+
+    g.traverse(function (c) {
+      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+    });
+    return g;
+  }
+
+  // ===== FERRAMENTAS MANUAIS DETALHADAS =====
   function construirEnxada() {
     var g = new THREE.Group();
-    var cabo = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.018, 0.6, 6), materialBase(0x8a6b3f, 'bark'));
-    cabo.position.y = 0.3;
-    cabo.rotation.z = 0.35;
-    var lamina = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.1), materialBase(0x9aa4a8, 'brushed', { metalness: 0.6, roughness: 0.4 }));
-    lamina.position.set(-0.11, 0.02, 0);
-    lamina.rotation.z = 0.35;
-    g.add(cabo, lamina);
+    // Cabo esculpido em nogueira com verniz
+    var cabo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.016, 0.02, 0.65, 8),
+      materialBase(0x9a7248, 'bark', { roughness: 0.8 })
+    );
+    cabo.position.y = 0.32;
+    cabo.rotation.z = 0.32;
+
+    // Colar / virola de latão
+    var virola = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.022, 0.04, 8),
+      materialBase(0xcca034, 'brushed', { metalness: 0.8, roughness: 0.3 })
+    );
+    virola.position.set(-0.1, 0.03, 0);
+    virola.rotation.z = 0.32;
+
+    // Lâmina curva forjada em aço carbono
+    var lamina = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.025, 0.12),
+      materialBase(0xa0a8ac, 'brushed', { metalness: 0.85, roughness: 0.3 })
+    );
+    lamina.position.set(-0.12, 0.015, 0);
+    lamina.rotation.z = 0.32;
+
+    g.add(cabo, virola, lamina);
+    g.traverse(function (c) { if (c.isMesh) { c.castShadow = true; } });
     return g;
   }
 
   function construirRegador() {
     var g = new THREE.Group();
-    var corpo = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.22, 12), materialBase(0x3f7a8f, 'brushed', { metalness: 0.4, roughness: 0.4 }));
-    corpo.position.y = 0.11;
-    var bico = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.2, 8), materialBase(0x3f7a8f, 'brushed', { metalness: 0.4 }));
-    bico.position.set(0.14, 0.2, 0);
-    bico.rotation.z = -0.9;
-    var alca = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 6, 12, Math.PI), materialBase(0x2f5f6f, 'brushed'));
-    alca.position.y = 0.22;
-    alca.rotation.x = Math.PI / 2;
-    g.add(corpo, bico, alca);
+    // Corpo metálico vintage verde-azulado
+    var corpo = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.14, 0.24, 14),
+      materialBase(0x3d7888, 'brushed', { metalness: 0.5, roughness: 0.4 })
+    );
+    corpo.position.y = 0.12;
+
+    // Bico longo afilado com rosa de aspersão em latão
+    var bico = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.02, 0.035, 0.24, 8),
+      materialBase(0x3d7888, 'brushed', { metalness: 0.5 })
+    );
+    bico.position.set(0.15, 0.21, 0);
+    bico.rotation.z = -0.92;
+
+    // Rosa do bico perfurada (cabeça perfurada com buraquinhos)
+    var rosa = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.055, 0.03, 0.04, 10),
+      materialBase(0xd4a742, 'brushed', { metalness: 0.8, roughness: 0.3 })
+    );
+    rosa.position.set(0.25, 0.3, 0);
+    rosa.rotation.z = -0.92;
+
+    // Alça tubular superior ergonômica
+    var alcaTopo = new THREE.Mesh(
+      new THREE.TorusGeometry(0.08, 0.014, 6, 14, Math.PI),
+      materialBase(0x285562, 'brushed')
+    );
+    alcaTopo.position.y = 0.24;
+    alcaTopo.rotation.x = Math.PI / 2;
+
+    // Alça traseira de despejo
+    var alcaTras = new THREE.Mesh(
+      new THREE.TorusGeometry(0.07, 0.014, 6, 12, Math.PI),
+      materialBase(0x285562, 'brushed')
+    );
+    alcaTras.position.set(-0.13, 0.14, 0);
+    alcaTras.rotation.z = Math.PI / 2;
+
+    g.add(corpo, bico, rosa, alcaTopo, alcaTras);
+    g.traverse(function (c) { if (c.isMesh) { c.castShadow = true; } });
     return g;
   }
 
   function construirMachado() {
     var g = new THREE.Group();
-    // Cabo de madeira
+    // Cabo esculpido em nogueira anatômica
     var cabo = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.025, 0.65, 8), 
-      materialBase(0x8b4513, 'bark', { roughness: 0.85 })
+      new THREE.CylinderGeometry(0.018, 0.026, 0.68, 8),
+      materialBase(0x8a5528, 'bark', { roughness: 0.85 })
     );
-    cabo.position.y = 0.32;
+    cabo.position.y = 0.34;
     cabo.rotation.z = 0.25;
-    
-    // Lâmina de metal
+
+    // Cabeça do machado em aço forjado polido
     var lamina = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.15, 0.03), 
-      materialBase(0xc0c0c0, 'brushed', { metalness: 0.8, roughness: 0.3 })
+      new THREE.BoxGeometry(0.24, 0.16, 0.035),
+      materialBase(0xadb6bc, 'brushed', { metalness: 0.85, roughness: 0.28 })
     );
-    lamina.position.set(-0.08, 0.62, 0);
+    lamina.position.set(-0.09, 0.64, 0);
     lamina.rotation.z = 0.25;
-    
-    // Detalhe da lâmina (fio)
+
+    // Fio afiado cromado
     var fio = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.02, 0.04), 
-      materialBase(0xe0e0e0, 'brushed', { metalness: 0.9, roughness: 0.2 })
+      new THREE.BoxGeometry(0.24, 0.025, 0.045),
+      materialBase(0xe4eaee, 'brushed', { metalness: 0.95, roughness: 0.15 })
     );
-    fio.position.set(-0.08, 0.69, 0);
+    fio.position.set(-0.09, 0.72, 0);
     fio.rotation.z = 0.25;
-    
+
     g.add(cabo, lamina, fio);
+    g.traverse(function (c) { if (c.isMesh) { c.castShadow = true; } });
     return g;
   }
 
-  // === MODELOS 3D DOS ITENS DA LOJA ===
-  
-  function criarModeloItem(itemId) {
-    var g = new THREE.Group();
-    g.userData.itemId = itemId;
-    g.userData.animado = true;
-    
-    if (itemId === 'trator' || itemId === 'tratorEletrico') {
-      var eletrico = itemId === 'tratorEletrico';
-      g.add(construirVeiculo(eletrico ? 0x3f8f7a : 0x8a4a2a, eletrico));
-      g.userData.tipo = 'veiculo';
-    } else if (itemId === 'drone') {
-      g.add(construirDrone());
-      g.userData.tipo = 'drone';
-      g.userData.flutuando = true;
-    } else if (itemId === 'colheitadeira') {
-      g.add(construirColheitadeira());
-      g.userData.tipo = 'veiculo';
-    } else if (itemId === 'gotejamento') {
-      g.add(construirGotejamento());
-      g.userData.tipo = 'estatico';
-      g.userData.animaAgua = true;
-    } else if (itemId === 'composteira') {
-      var caixote = caixaDe(0x6f5a3f, 0.4, 0.3, 0.4, 'bark', 0.15);
-      var tampa = caixaDe(0x8a6b3f, 0.44, 0.06, 0.44, 'bark', 0.32);
-      var adubo = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), materialBase(0x4a3a26, 'soil'));
-      adubo.position.y = 0.35;
-      g.add(caixote, tampa, adubo);
-      g.userData.tipo = 'estatico';
-      g.userData.particulas = true;
-    } else if (itemId === 'arvore') {
-      // Árvore de reflorestamento
-      var tronco = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.08, 0.4, 7), 
-        materialBase(0x5a4530, 'bark', { roughness: 0.95 })
-      );
-      tronco.position.y = 0.2;
-      var copa = new THREE.Mesh(
-        new THREE.SphereGeometry(0.3, 12, 10), 
-        materialBase(0x4f7a3a, 'leaf', { roughness: 0.85 })
-      );
-      copa.position.y = 0.62;
-      copa.scale.set(1, 0.85, 1);
-      g.add(tronco, copa);
-      g.userData.tipo = 'estatico';
-    } else if (itemId === 'enxada') {
-      g.add(construirEnxada());
-      g.userData.tipo = 'ferramenta';
-    } else if (itemId === 'regador') {
-      g.add(construirRegador());
-      g.userData.tipo = 'ferramenta';
-    } else if (D.ENERGIA[itemId]) {
-      // itens de energia (painel, turbina, poste, bateria, caixa) reaproveitam
-      // o mesmo modelo que já aparece quando viram estrutura de bloco
-      var energia = malhaDeEstrutura(itemId);
-      g.add(energia);
-      if (energia.userData.gira) g.userData.gira = energia.userData.gira;
-      if (energia.userData.lampada) g.userData.lampada = energia.userData.lampada;
-      g.userData.tipo = 'energia';
-    } else {
-      // Item genérico caso não seja reconhecido
-      var placeholder = caixaDe(0x888888, 0.3, 0.3, 0.3, null, 0.15);
-      g.add(placeholder);
-      g.userData.tipo = 'estatico';
-    }
-    
-    // Adicionar sombras
-    g.traverse(function(obj) {
-      if (obj.isMesh) {
-        obj.castShadow = true;
-        obj.receiveShadow = true;
-      }
-    });
-    
-    return g;
-  }
-  
-  // Função para criar preview transparente do item
-  function criarPreviewItem(itemId) {
-    var preview = criarModeloItem(itemId);
-    if (!preview) return null;
-
-    // Aplicar material transparente em todos os meshes
-    preview.traverse(function (obj) {
-      if (obj.isMesh && obj.material) {
-        // Clonar material para não afetar outros objetos
-        var mat = obj.material.clone();
-        mat.transparent = true;
-        mat.opacity = 0.65;
-        if (mat.emissive) mat.emissive.setHex(COR_PREVIEW_OK);
-        if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0.35;
-        mat.depthWrite = false;
-        obj.renderOrder = 999;
-        obj.material = mat;
-      }
-    });
-
-    return preview;
-  }
-  
-  // Função para animar itens colocados
-  function animarItem(item, dt) {
-    if (!item.userData.animado) return;
-    
-    var tipo = item.userData.tipo;
-    
-    if (item.userData.flutuando) {
-      // Drone flutuando
-      item.position.y = 0.8 + Math.sin(Date.now() * 0.002) * 0.1;
-      item.rotation.y += dt * 0.5;
-      
-      // Girar hélices
-      item.traverse(function(obj) {
-        if (obj.geometry && obj.geometry.type === 'CylinderGeometry' && obj.position.y > 0.3) {
-          obj.rotation.y += dt * 20;
-        }
-      });
-    }
-    
-    if (item.userData.animaAgua) {
-      // Gotejamento - animar gotas
-      var tempo = Date.now() * 0.003;
-      if (Math.random() < 0.05) {
-        criarGotaAgua(item.position.x, item.position.z);
-      }
-    }
-    
-    if (item.userData.particulas) {
-      // Composteira - partículas de vapor
-      if (Math.random() < 0.02) {
-        criarParticulaVapor(item.position.x, item.position.y + 0.4, item.position.z);
-      }
-    }
-  }
-  
-  // Partículas de água
-  function criarGotaAgua(x, z) {
-    var gota = new THREE.Mesh(
-      new THREE.SphereGeometry(0.02, 4, 4),
-      materialBase(0x4a90a8, null, { transparent: true, opacity: 0.7 })
-    );
-    gota.position.set(x + (Math.random() - 0.5) * 0.3, 0.16, z + (Math.random() - 0.5) * 0.3);
-    gota.userData.velocidade = -0.01;
-    gota.userData.vida = 1.0;
-    grupoDecoracoes.add(gota);
-    modoConstrucao.particulas.push(gota);
-  }
-  
-  // Partículas de vapor
-  function criarParticulaVapor(x, y, z) {
-    var vapor = new THREE.Mesh(
-      new THREE.SphereGeometry(0.03, 4, 4),
-      materialBase(0xcccccc, null, { transparent: true, opacity: 0.4 })
-    );
-    vapor.position.set(
-      x + (Math.random() - 0.5) * 0.2, 
-      y, 
-      z + (Math.random() - 0.5) * 0.2
-    );
-    vapor.userData.velocidade = 0.005;
-    vapor.userData.vida = 1.0;
-    grupoDecoracoes.add(vapor);
-    modoConstrucao.particulas.push(vapor);
-  }
-  
-  // Função para cortar árvore decorativa
-  function cortarArvore(arvore) {
-    if (!arvore || !arvore.userData.podeCortar) return false;
-    
-    // Animação de corte
-    var angulo = 0;
-    var velocidade = 0.02;
-    var intervalo = setInterval(function() {
-      angulo += velocidade;
-      velocidade += 0.001;
-      arvore.rotation.z = angulo;
-      arvore.position.y -= velocidade * 0.5;
-      
-      if (angulo > Math.PI / 2) {
-        clearInterval(intervalo);
-        // Remover árvore
-        grupoDecoracoes.remove(arvore);
-        
-        // Remover obstáculo (só o da árvore: construções têm marca própria)
-        var idx = obstaculos.findIndex(function(obs) {
-          return !obs.construcao && obs.pos.distanceTo(arvore.position) < 0.1;
-        });
-        if (idx >= 0) obstaculos.splice(idx, 1);
-        
-        // Árvore nativa cortada. A pegada ecológica é calculada a partir
-        // dos blocos (C.indiceDePegada), então não existe um "modificarPegada"
-        // para chamar aqui: cortar a decoração não altera o placar.
-        aviso('Árvore cortada! O terreno perdeu a sombra dela.', false);
-        atualizarUI();
-        
-        // Criar toras no chão
-        criarTorasNoChao(arvore.position.x, arvore.position.z);
-      }
-    }, 16);
-    
-    return true;
-  }
-  
-  // Criar toras de madeira no chão
-  function criarTorasNoChao(x, z) {
-    for (var i = 0; i < 3; i++) {
-      var tora = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8),
-        materialBase(0x8b6f47, 'bark', { roughness: 0.9 })
-      );
-      tora.position.set(
-        x + (Math.random() - 0.5) * 0.5,
-        0.04,
-        z + (Math.random() - 0.5) * 0.5
-      );
-      tora.rotation.z = Math.PI / 2;
-      tora.rotation.y = Math.random() * Math.PI;
-      tora.castShadow = true;
-      tora.receiveShadow = true;
-      grupoDecoracoes.add(tora);
-    }
-  }
-
+  // ===== SISTEMA DE IRRIGAÇÃO POR GOTEJAMENTO =====
   function construirGotejamento() {
     var g = new THREE.Group();
-    var cano = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.05, 0.05), materialBase(0x4a6a5a, 'brushed', { metalness: 0.4, roughness: 0.4 }));
-    cano.position.y = 0.16;
-    var cano2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.8), materialBase(0x4a6a5a, 'brushed', { metalness: 0.4, roughness: 0.4 }));
-    cano2.position.y = 0.16;
-    g.add(cano, cano2);
+
+    // Tubulação principal de polietileno com válvula e manômetro
+    var cano1 = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.024, 0.88, 8),
+      materialBase(0x283832, 'brushed', { metalness: 0.4, roughness: 0.5 })
+    );
+    cano1.rotation.z = Math.PI / 2;
+    cano1.position.y = 0.14;
+
+    var cano2 = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.024, 0.88, 8),
+      materialBase(0x283832, 'brushed', { metalness: 0.4, roughness: 0.5 })
+    );
+    cano2.rotation.x = Math.PI / 2;
+    cano2.position.y = 0.14;
+
+    // Válvula central reguladora em latão com manômetro
+    var valvula = new THREE.Mesh(
+      new THREE.SphereGeometry(0.045, 8, 8),
+      materialBase(0xd4a742, 'brushed', { metalness: 0.75, roughness: 0.3 })
+    );
+    valvula.position.y = 0.14;
+    var manometro = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.03, 0.03, 0.02, 10),
+      materialBase(0xffffff, null, { roughness: 0.3 })
+    );
+    manometro.position.set(0, 0.19, 0);
+    g.add(cano1, cano2, valvula, manometro);
+
+    // 4 micro-gotejadores de precisão com círculos úmidos na base
     for (var i = -1; i <= 1; i += 2) {
       for (var j = -1; j <= 1; j += 2) {
-        var bocal = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.06, 6), materialBase(0x2f4a3a, null));
-        bocal.position.set(i * 0.3, 0.11, j * 0.3);
+        var bocal = new THREE.Mesh(
+          new THREE.ConeGeometry(0.025, 0.06, 6),
+          materialBase(0x184838, null)
+        );
+        bocal.position.set(i * 0.32, 0.11, j * 0.32);
         bocal.rotation.x = Math.PI;
-        g.add(bocal);
+
+        // Círculo úmido no solo sob o gotejador
+        var manchaAgua = new THREE.Mesh(
+          new THREE.CircleGeometry(0.09, 8),
+          materialBase(0x426858, null, { roughness: 0.3, transparent: true, opacity: 0.75, depthWrite: false })
+        );
+        manchaAgua.rotation.x = -Math.PI / 2;
+        manchaAgua.position.set(i * 0.32, 0.01, j * 0.32);
+
+        g.add(bocal, manchaAgua);
       }
     }
     return g;
   }
 
+  // ===== ESTRUTURAS E ENERGIA LIMPA DE ALTA FIDELIDADE =====
   function malhaDeEstrutura(id) {
     var eq = D.EQUIPAMENTOS[id];
     var en = D.ENERGIA[id];
     var g = new THREE.Group();
 
     if (id === 'arvore') {
-      var tronco = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.4, 7), materialBase(0x5a4530, 'bark'));
-      tronco.position.y = 0.2;
-      var copa = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), materialBase(0x4f7a3a, 'leaf'));
-      copa.position.y = 0.62;
-      copa.scale.set(1, 0.85, 1);
-      g.add(tronco, copa);
+      // Árvore de reflorestamento com raízes expostas e copa multicamada
+      var tronco = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.12, 0.45, 8),
+        materialBase(0x563e2a, 'bark', { roughness: 0.95 })
+      );
+      tronco.position.y = 0.22;
+      tronco.castShadow = true;
+
+      // Raízes que se fixam na terra
+      for (var r = 0; r < 4; r++) {
+        var angR = (r / 4) * Math.PI * 2;
+        var raiz = new THREE.Mesh(
+          new THREE.ConeGeometry(0.04, 0.18, 5),
+          materialBase(0x563e2a, 'bark', { roughness: 0.95 })
+        );
+        raiz.position.set(Math.cos(angR) * 0.11, 0.05, Math.sin(angR) * 0.11);
+        raiz.rotation.set(0.6 * Math.sin(angR), 0, -0.6 * Math.cos(angR));
+        g.add(raiz);
+      }
+
+      // Copa orgânica exuberante com 4 esferas de folhagem interpenetradas
+      var copaC = new THREE.Mesh(
+        new THREE.SphereGeometry(0.28, 12, 10),
+        materialBase(0x427c34, 'leaf', { roughness: 0.85 })
+      );
+      copaC.position.y = 0.65;
+      var copaEsq = new THREE.Mesh(
+        new THREE.SphereGeometry(0.2, 10, 8),
+        materialBase(0x528e42, 'leaf', { roughness: 0.85 })
+      );
+      copaEsq.position.set(-0.14, 0.6, 0.08);
+      var copaDir = new THREE.Mesh(
+        new THREE.SphereGeometry(0.22, 10, 8),
+        materialBase(0x386c2e, 'leaf', { roughness: 0.85 })
+      );
+      copaDir.position.set(0.14, 0.62, -0.06);
+
+      // Frutos silvestres vermelhos na copa
+      for (var m = 0; m < 5; m++) {
+        var fruto = new THREE.Mesh(
+          new THREE.SphereGeometry(0.025, 5, 5),
+          materialBase(0xe03838, null, { roughness: 0.4 })
+        );
+        var angM = (m / 5) * Math.PI * 2;
+        fruto.position.set(Math.cos(angM) * 0.22, 0.6 + (m % 2) * 0.08, Math.sin(angM) * 0.22);
+        g.add(fruto);
+      }
+
+      g.add(tronco, copaC, copaEsq, copaDir);
+
+    } else if (id === 'composteira') {
+      // Caixa de compostagem de madeira ripada com ripas visíveis
+      var baseCaixa = caixaDe(0x5e4832, 0.42, 0.32, 0.42, 'bark', 0.16);
+      // Ripas de madeira nas laterais
+      for (var s = 0; s < 3; s++) {
+        var ripaF = new THREE.Mesh(
+          new THREE.BoxGeometry(0.44, 0.05, 0.02),
+          materialBase(0x7a5e42, 'bark', { roughness: 0.9 })
+        );
+        ripaF.position.set(0, 0.06 + s * 0.1, 0.215);
+        g.add(ripaF);
+      }
+
+      // Adubo orgânico fértil e restos verdes dentro da caixa
+      var adubo = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.12, 0.38),
+        materialBase(0x3a2c1e, 'soil', { roughness: 0.95 })
+      );
+      adubo.position.y = 0.24;
+
+      // Tampa articulada entreaberta com suporte
+      var tampa = caixaDe(0x8a6b4a, 0.45, 0.035, 0.45, 'bark', 0.34);
+      tampa.rotation.x = -0.35;
+      tampa.position.set(0, 0.37, -0.06);
+
+      // Termômetro analógico com mostrador no painel frontal
+      var termometro = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.035, 0.035, 0.015, 10),
+        materialBase(0xffffff, null, { roughness: 0.3 })
+      );
+      termometro.rotation.x = Math.PI / 2;
+      termometro.position.set(0.12, 0.22, 0.225);
+
+      g.add(baseCaixa, adubo, tampa, termometro);
+
+    } else if (id === 'painel') {
+      // Painel solar duplo fotovoltaico de alta eficiência
+      var suporte = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.03, 0.32, 8),
+        materialBase(0x6e7880, 'brushed', { metalness: 0.8, roughness: 0.3 })
+      );
+      suporte.position.y = 0.16;
+
+      // Estrutura metálica de fixação inclinada
+      var moldura = new THREE.Mesh(
+        new THREE.BoxGeometry(0.56, 0.04, 0.38),
+        materialBase(0x8a9296, 'brushed', { metalness: 0.85, roughness: 0.25 })
+      );
+      moldura.position.set(0, 0.32, 0);
+      moldura.rotation.x = 0.45; // inclinação ideal para o sol
+
+      // Células solares fotovoltaicas com brilho azul anti-reflexo
+      var celulas = new THREE.Mesh(
+        new THREE.BoxGeometry(0.52, 0.02, 0.34),
+        materialBase(0x184278, 'solar', { metalness: 0.6, roughness: 0.15 })
+      );
+      celulas.position.set(0, 0.335, 0);
+      celulas.rotation.x = 0.45;
+
+      // Caixa inversora com LED de operação no poste
+      var inversor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.09, 0.12, 0.06),
+        materialBase(0x3e4850, 'brushed', { metalness: 0.7 })
+      );
+      inversor.position.set(0, 0.14, 0.04);
+      var ledOp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.014, 6, 6),
+        materialBase(0x22ff55, null, { emissive: 0x22ff55, emissiveIntensity: 1.0 })
+      );
+      ledOp.position.set(0.025, 0.17, 0.075);
+
+      g.add(suporte, moldura, celulas, inversor, ledOp);
+
+    } else if (id === 'turbina') {
+      // Turbina eólica aerodinâmica elegante com nacele e rotor de 3 pás
+      var torre = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.07, 1.25, 12),
+        materialBase(0xe4e8ec, 'brushed', { metalness: 0.6, roughness: 0.3 })
+      );
+      torre.position.y = 0.625;
+
+      // Porta de manutenção na base
+      var porta = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.09, 0.02),
+        materialBase(0x606870, 'brushed')
+      );
+      porta.position.set(0, 0.1, 0.07);
+
+      // Nacele do gerador
+      var nacele = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.05, 0.22, 10),
+        materialBase(0xe4e8ec, 'brushed', { metalness: 0.6, roughness: 0.3 })
+      );
+      nacele.rotation.x = Math.PI / 2;
+      nacele.position.set(0, 1.25, 0);
+
+      // Nariz cônico do rotor (spinner)
+      var spinner = new THREE.Mesh(
+        new THREE.ConeGeometry(0.05, 0.09, 10),
+        materialBase(0xd0d8e0, 'brushed', { metalness: 0.7 })
+      );
+      spinner.rotation.x = Math.PI / 2;
+      spinner.position.set(0, 1.25, 0.12);
+
+      // Conjunto giratório de 3 pás aerodinâmicas
+      var rotorGroup = new THREE.Group();
+      rotorGroup.position.set(0, 1.25, 0.13);
+      for (var pIdx = 0; pIdx < 3; pIdx++) {
+        var angPa = (pIdx / 3) * Math.PI * 2;
+        var paEolica = new THREE.Mesh(
+          new THREE.BoxGeometry(0.035, 0.42, 0.015),
+          materialBase(0xf4f8fa, 'brushed', { metalness: 0.5, roughness: 0.3 })
+        );
+        paEolica.position.set(Math.sin(angPa) * 0.22, Math.cos(angPa) * 0.22, 0);
+        paEolica.rotation.z = -angPa;
+        rotorGroup.add(paEolica);
+      }
+
+      // Luz estroboscópica de segurança aérea no topo
+      var luzTopo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.018, 6, 6),
+        materialBase(0xff2222, null, { emissive: 0xff1111, emissiveIntensity: 0.9 })
+      );
+      luzTopo.position.set(0, 1.32, -0.04);
+
+      g.add(torre, porta, nacele, spinner, rotorGroup, luzTopo);
+      g.userData.gira = rotorGroup;
+      g.userData.luzAlerta = luzTopo;
+
+    } else if (id === 'bateria') {
+      // Estação de armazenamento de energia limpa com mostrador de carga LED
+      var gabinete = caixaDe(0x2c3e38, 0.36, 0.38, 0.26, 'brushed', 0.19);
+      // Aletas de ventilação lateral
+      for (var v = 0; v < 4; v++) {
+        var aleta = new THREE.Mesh(
+          new THREE.BoxGeometry(0.01, 0.02, 0.18),
+          materialBase(0x1a2622, null)
+        );
+        aleta.position.set(0.185, 0.12 + v * 0.05, 0);
+        g.add(aleta);
+      }
+
+      // Painel com 4 barras indicadoras de nível de carga (LEDs verde-ciano)
+      var painelMedidor = new THREE.Mesh(
+        new THREE.BoxGeometry(0.24, 0.14, 0.02),
+        materialBase(0x18201d, null)
+      );
+      painelMedidor.position.set(0, 0.26, 0.135);
+      g.add(painelMedidor);
+
+      for (var ledB = 0; ledB < 4; ledB++) {
+        var barraLed = new THREE.Mesh(
+          new THREE.BoxGeometry(0.18, 0.018, 0.01),
+          materialBase(0x00f0aa, null, { emissive: 0x00d490, emissiveIntensity: 1.0 })
+        );
+        barraLed.position.set(0, 0.22 + ledB * 0.028, 0.146);
+        g.add(barraLed);
+      }
+
+      // Conectores blindados de alta tensão no topo
+      var conector1 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.025, 0.025, 0.05, 8),
+        materialBase(0x8a9296, 'brushed', { metalness: 0.8 })
+      );
+      conector1.position.set(-0.09, 0.4, 0);
+      var conector2 = conector1.clone();
+      conector2.position.x = 0.09;
+
+      g.add(gabinete, conector1, conector2);
+
+    } else if (id === 'poste') {
+      // Poste colonial clássico de ferro forjado com luminária e luz real noturna
+      var basePoste = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.065, 0.09, 0.16, 8),
+        materialBase(0x383a3d, 'brushed', { metalness: 0.65, roughness: 0.4 })
+      );
+      basePoste.position.y = 0.08;
+
+      var mastroP = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.045, 1.15, 8),
+        materialBase(0x383a3d, 'brushed', { metalness: 0.65, roughness: 0.4 })
+      );
+      mastroP.position.y = 0.65;
+
+      // Braço curvo ornamental superior
+      var bracoLuz = new THREE.Mesh(
+        new THREE.TorusGeometry(0.12, 0.018, 6, 12, Math.PI / 1.5),
+        materialBase(0x383a3d, 'brushed', { metalness: 0.7 })
+      );
+      bracoLuz.position.set(0.08, 1.22, 0);
+      bracoLuz.rotation.z = -Math.PI / 3;
+
+      // Gaiola de vidro da lanterna
+      var lanternaVidro = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.06, 0.15, 6),
+        materialBase(0xfff4d0, null, { transparent: true, opacity: 0.6, roughness: 0.2 })
+      );
+      lanternaVidro.position.set(0.16, 1.18, 0);
+
+      // Cúpula superior da luminária
+      var cupula = new THREE.Mesh(
+        new THREE.ConeGeometry(0.11, 0.06, 6),
+        materialBase(0x282a2d, 'brushed', { metalness: 0.7 })
+      );
+      cupula.position.set(0.16, 1.27, 0);
+
+      // Lâmpada de filamento brilhante
+      var lampada = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 8, 8),
+        materialBase(0xfff6c0, null, { emissive: 0xffdd77, emissiveIntensity: 0.2 })
+      );
+      lampada.position.set(0.16, 1.17, 0);
+
+      // Ponto de luz real para iluminar o mapa à noite!
+      var luzPonto = new THREE.PointLight(0xffdf80, 0, 9.5, 2.0);
+      luzPonto.position.set(0.16, 1.17, 0);
+
+      g.add(basePoste, mastroP, bracoLuz, lanternaVidro, cupula, lampada, luzPonto);
+      g.userData.lampada = lampada;
+      g.userData.luzPonto = luzPonto;
+      g.userData.eLuzPoste = true;
+
+    } else if (id === 'caixa') {
+      // Caixa d'água / cisterna de captação de chuva com base de paletes
+      var basePalete = caixaDe(0x7a5a3a, 0.44, 0.08, 0.44, 'bark', 0.04);
+
+      // Tanque cilíndrico com aros de aço
+      var cisterna = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.25, 0.23, 0.42, 14),
+        materialBase(0x4a8296, 'brushed', { metalness: 0.4, roughness: 0.35 })
+      );
+      cisterna.position.y = 0.28;
+
+      // Cinta metálica de reforço
+      var cinta1 = new THREE.Mesh(
+        new THREE.TorusGeometry(0.245, 0.012, 6, 16),
+        materialBase(0x333333, 'brushed', { metalness: 0.8 })
+      );
+      cinta1.rotation.x = Math.PI / 2;
+      cinta1.position.y = 0.22;
+      var cinta2 = cinta1.clone();
+      cinta2.position.y = 0.34;
+
+      // Tampa cônica com filtro de chuva
+      var tampaC = new THREE.Mesh(
+        new THREE.ConeGeometry(0.27, 0.1, 14),
+        materialBase(0x38687a, 'brushed', { metalness: 0.5 })
+      );
+      tampaC.position.y = 0.52;
+
+      // Tubo indicador de nível translúcido na lateral
+      var tuboNivel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.015, 0.32, 6),
+        materialBase(0x8ce0ff, null, { transparent: true, opacity: 0.65 })
+      );
+      tuboNivel.position.set(0.25, 0.28, 0);
+
+      // Torneira de latão na base
+      var torneira = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.04, 0.08),
+        materialBase(0xd4a742, 'brushed', { metalness: 0.8 })
+      );
+      torneira.position.set(0, 0.14, 0.26);
+
+      g.add(basePalete, cisterna, cinta1, cinta2, tampaC, tuboNivel, torneira);
+
     } else if (id === 'gotejamento') {
       g.add(construirGotejamento());
-    } else if (id === 'composteira') {
-      var caixote = caixaDe(0x6f5a3f, 0.36, 0.26, 0.36, 'bark', 0.13);
-      var tampa = caixaDe(0x8a6b3f, 0.4, 0.05, 0.4, 'bark', 0.28);
-      var adubo = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), materialBase(0x4a3a26, 'soil'));
-      adubo.position.y = 0.3;
-      g.add(caixote, tampa, adubo);
     } else if (id === 'trator') {
-      g.add(construirVeiculo(0x8a4a2a, false));
+      g.add(construirVeiculo(0x8a3a2a, false));
     } else if (id === 'tratorEletrico') {
-      g.add(construirVeiculo(0x3f8f7a, true));
+      g.add(construirVeiculo(0x2da882, true));
     } else if (id === 'drone') {
       g.add(construirDrone());
     } else if (id === 'colheitadeira') {
@@ -1910,42 +3051,15 @@
       g.add(construirEnxada());
     } else if (id === 'regador') {
       g.add(construirRegador());
+    } else if (id === 'machado') {
+      g.add(construirMachado());
     } else if (eq) {
       g.add(construirVeiculo(0x6a7a6a, true));
-    } else if (en && en.id === 'painel') {
-      var p = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.34), materialBase(0x3f6f9a, 'solar', { metalness: 0.4, roughness: 0.2 }));
-      p.position.y = 0.28;
-      p.rotation.z = -0.3;
-      var perna = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 6), materialBase(0x7d8a84, 'brushed', { metalness: 0.6 }));
-      perna.position.y = 0.14;
-      g.add(p, perna);
-    } else if (en && en.id === 'turbina') {
-      var mastro = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 8), materialBase(0xd8dcd8, 'brushed', { metalness: 0.6, roughness: 0.3 }));
-      mastro.position.y = 0.45;
-      var helice = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.02, 6, 16), materialBase(0xe8ece8, 'brushed', { metalness: 0.5, roughness: 0.3 }));
-      helice.position.set(0, 0.9, 0.06);
-      helice.rotation.x = Math.PI / 2;
-      g.add(mastro, helice);
-      g.userData.gira = helice;
-    } else if (en && en.id === 'bateria') {
-      var bat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.2), materialBase(0x3f5a48, 'brushed', { metalness: 0.4, roughness: 0.35 }));
-      bat.position.y = 0.15;
-      g.add(bat);
-    } else if (en && en.id === 'poste') {
-      var poste = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 1.1, 7), materialBase(0x6b6b62, 'brushed', { metalness: 0.5, roughness: 0.4 }));
-      poste.position.y = 0.55;
-      var lampada = new THREE.Mesh(
-        new THREE.SphereGeometry(0.1, 10, 8),
-        materialBase(0xfff0c0, null, { emissive: 0xffdd88, emissiveIntensity: 0 })
-      );
-      lampada.position.y = 1.14;
-      g.add(poste, lampada);
-      g.userData.lampada = lampada;
-    } else if (en && en.id === 'caixa') {
-      var caixa = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.2, 0.34, 12), materialBase(0x5a8a9a, 'brushed', { metalness: 0.35, roughness: 0.4 }));
-      caixa.position.y = 0.17;
-      g.add(caixa);
     }
+
+    g.traverse(function (c) {
+      if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+    });
     return g;
   }
 
@@ -1953,9 +3067,11 @@
     // solo: todos os 144 blocos aparecem, os travados ficam neutro
     estado.blocos.forEach(function (b, i) {
       var malha = malhasBloco[i];
-      malha.material.color.setHex(corDoSolo(b));
+      // malhasBloco stores THREE.Group; the actual base mesh sits in userData.baseMesh
+      var baseMesh = malha.userData.baseMesh || malha;
+      baseMesh.material.color.setHex(corDoSolo(b));
       malha.position.y = b.bloqueado ? -0.08 : 0;
-      malha.material.roughness = b.bloqueado ? 0.98 : 0.88;
+      baseMesh.material.roughness = b.bloqueado ? 0.98 : 0.88;
     });
 
     // Estruturas e culturas do modo construção sobrevivem ao redesenho
@@ -2127,15 +3243,38 @@
     // Será chamada após montarFerramentas definir criarIconeSVG
   }
 
+  // Escolhe uma ferramenta pelo id. O clique nos botões e os atalhos de
+  // teclado (números 1..8) passam por aqui, então os dois caminhos nunca
+  // divergem — inclusive para ligar/desligar o modo construção.
+  function selecionarFerramenta(id) {
+    if (!estado || !id) return false;
+
+    // "Modo Construção" liga/desliga o modo: não é uma ferramenta comum
+    if (id === 'construcao') {
+      if (!modoConstrucao.ativo) ativarModoConstrucao();
+      else desativarModoConstrucao();
+      return true;
+    }
+
+    // qualquer outra ferramenta tira o jogo do modo construção
+    if (modoConstrucao.ativo) desativarModoConstrucao();
+
+    estado.ferramenta = id;
+    marcarFerramenta();
+    atualizarFerramentaMao();
+    return true;
+  }
+
   function montarFerramentas() {
     var caixa = ui('ferramentas');
     caixa.textContent = '';
     
-    FERRAMENTAS.forEach(function (f) {
+    FERRAMENTAS.forEach(function (f, indice) {
       var b = document.createElement('button');
       b.type = 'button';
       b.dataset.ferramenta = f.id;
-      b.setAttribute('title', f.nome); // Adiciona tooltip ao hover
+      // o tooltip mostra o atalho: 1..8 escolhem a ferramenta no teclado
+      b.setAttribute('title', f.nome + ' (' + (indice + 1) + ')');
       
       // Adicionar ícone SVG
       var icone = criarIconeSVG(f.id);
@@ -2144,20 +3283,9 @@
       
       // NÃO adicionar nome - apenas SVG
       
+      // clique e teclado usam o MESMO caminho de seleção
       b.addEventListener('click', function () {
-        // Se clicar em "Modo Construção", liga ou desliga
-        if (f.id === 'construcao') {
-          if (!modoConstrucao.ativo) ativarModoConstrucao();
-          else desativarModoConstrucao();
-          return;
-        }
-
-        // Se modo construção está ativo e clicou em outra ferramenta, desativa
-        if (modoConstrucao.ativo) desativarModoConstrucao();
-
-        estado.ferramenta = f.id;
-        marcarFerramenta();
-        atualizarFerramentaMao();
+        selecionarFerramenta(f.id);
       });
       caixa.appendChild(b);
     });
@@ -2589,53 +3717,142 @@
     noite: 0x16203a
   };
 
+  // Interpola linearmente entre dois valores
+  function _lerp(a, b, t) { return a + (b - a) * Math.max(0, Math.min(1, t)); }
+  // Interpola suavemente (ease in/out) entre dois valores
+  function _smoothstep(a, b, t) { t = Math.max(0, Math.min(1, t)); t = t * t * (3 - 2 * t); return a + (b - a) * t; }
+
+  // Objeto persistente para não criar new THREE.Color() todo frame
+  var _corTemp = new THREE.Color();
+
   function aplicarLuz() {
-    var h = estado.relogio;
+    var h = estado.relogio;            // 0..1 (ciclo de 24h)
     var noite = C.ehNoite(estado);
-    var estacao = C.estacaoDe(estado);
-    var amanhecer = h > 0.2 && h < 0.36;
-    var entardecer = h > 0.66 && h < 0.84;
     var clima = D.CLIMAS[estado.clima];
 
-    // ceu: muda de cor e simula o ceu mais proximo
-    var corCeu = CORES_CEU[estacao] || CORES_CEU.dia;
-    if (cena.background && cena.background.setHex) cena.background.setHex(corCeu);
-    if (cena.fog) {
-      cena.fog.color.setHex(corCeu);
-      cena.fog.near = 8;
-      cena.fog.far = 34;
+    // === FASES DO DIA (0..1) ===
+    // madrugada 0–0.18, amanhecer 0.18–0.30, manhã 0.30–0.55,
+    // tarde 0.55–0.68, entardecer 0.68–0.82, noite 0.82–1.0
+    var tAmanhec  = _smoothstep(0, 1, (h - 0.18) / 0.12);   // 0→1 no amanhecer
+    var tManha    = _smoothstep(0, 1, (h - 0.30) / 0.10);   // 0→1 na manhã
+    var tEntard   = _smoothstep(0, 1, (h - 0.68) / 0.10);   // 0→1 no entardecer
+    var tNoite    = _smoothstep(0, 1, (h - 0.82) / 0.08);   // 0→1 na noite
+
+    // === COR DO CÉU — transição gradual ===
+    // Sequência: madrugada → amanhecer → dia → entardecer → noite
+    var ceuR, ceuG, ceuB;
+    if (h < 0.18) {
+      // Madrugada
+      ceuR = 0x2a / 255; ceuG = 0x3a / 255; ceuB = 0x52 / 255;
+    } else if (h < 0.30) {
+      // Amanhecer
+      ceuR = _lerp(0x2a, 0xf5, tAmanhec) / 255;
+      ceuG = _lerp(0x3a, 0xb0, tAmanhec) / 255;
+      ceuB = _lerp(0x52, 0x70, tAmanhec) / 255;
+    } else if (h < 0.68) {
+      // Dia
+      ceuR = _lerp(0xf5, 0xdf, tManha) / 255;
+      ceuG = _lerp(0xb0, 0xee, tManha) / 255;
+      ceuB = _lerp(0x70, 0xff, tManha) / 255;
+    } else if (h < 0.82) {
+      // Entardecer
+      ceuR = _lerp(0xdf, 0xe8, tEntard) / 255;
+      ceuG = _lerp(0xee, 0x62, tEntard) / 255;
+      ceuB = _lerp(0xff, 0x38, tEntard) / 255;
+    } else {
+      // Noite
+      ceuR = _lerp(0xe8, 0x16, tNoite) / 255;
+      ceuG = _lerp(0x62, 0x20, tNoite) / 255;
+      ceuB = _lerp(0x38, 0x3a, tNoite) / 255;
     }
 
-    var corSol = 0xffffff;
-    if (amanhecer || entardecer) corSol = 0xff9f5c;
-    if (noite) corSol = 0x8fa6c8;
+    // Clima nublado suaviza e acinzenta o céu
+    var nublado = clima.solar < 0.7 ? (1 - clima.solar) * 0.6 : 0;
+    ceuR = _lerp(ceuR, 0.55, nublado);
+    ceuG = _lerp(ceuG, 0.55, nublado);
+    ceuB = _lerp(ceuB, 0.58, nublado);
 
-    luzes.sol.color.setHex(corSol);
-    // a noite tem que ESCURECER de verdade, nao so clarear
-    luzes.sol.intensity = noite ? 0.06 : (amanhecer || entardecer ? 0.75 : 1.2);
+    _corTemp.setRGB(ceuR, ceuG, ceuB);
+    if (cena.background && cena.background.setRGB) cena.background.setRGB(ceuR, ceuG, ceuB);
+    if (cena.fog) {
+      cena.fog.color.copy(_corTemp);
+      // Névoa mais densa à noite e na chuva
+      var neblina = noite ? 0.6 : 1.0;
+      if (clima.chuva > 0) neblina *= 0.5 + clima.chuva * 0.5;
+      cena.fog.near = 14 * neblina;
+      cena.fog.far  = 55 * neblina;
+    }
+
+    // === LUZ SOLAR — posição e cor ===
+    var angSol = h * Math.PI * 2;
+    var alturaSol = Math.sin(angSol - Math.PI * 0.5);   // -1..1
     luzes.sol.position.set(
-      Math.cos(h * Math.PI * 2) * 14,
-      noite ? 6 : Math.max(1.5, Math.sin(h * Math.PI * 2) * 15),
-      6
+      Math.cos(angSol) * 18,
+      Math.max(2, alturaSol * 20),
+      8
     );
 
-    luzes.hemi.intensity = noite ? 0.1 : 0.75;
-    luzes.hemi.color.setHex(noite ? 0x24304a : 0xeaf6ec);
-    luzes.hemi.groundColor.setHex(noite ? 0x0d1220 : 0x4a5a4e);
-    luzes.luar.intensity = noite ? 0.22 : 0.1;
-    luzes.sol.intensity *= clima.solar * 0.55 + 0.45;
+    var solR, solG, solB, solInt;
+    if (noite) {
+      solR = 0x6a / 255; solG = 0x8a / 255; solB = 0xb8 / 255;
+      solInt = 0.04;
+    } else if (h < 0.30) {
+      // Amanhecer — laranja quente
+      solR = _lerp(0x88, 0xff, tAmanhec) / 255;
+      solG = _lerp(0x70, 0xb0, tAmanhec) / 255;
+      solB = _lerp(0xaa, 0x70, tAmanhec) / 255;
+      solInt = _lerp(0.05, 0.85, tAmanhec);
+    } else if (h < 0.68) {
+      // Dia — branco amarelado
+      solR = 1.0; solG = 0.98; solB = 0.90;
+      solInt = _lerp(0.85, 1.25, tManha);
+    } else {
+      // Entardecer → noite
+      solR = _lerp(1.0, 0x6a / 255, tEntard);
+      solG = _lerp(0.65, 0x8a / 255, tEntard);
+      solB = _lerp(0.35, 0xb8 / 255, tEntard);
+      solInt = _lerp(1.25, 0.05, tEntard);
+    }
 
+    // Fator de sombra do clima
+    solInt *= Math.max(0.3, clima.solar * 0.55 + 0.45);
+
+    luzes.sol.color.setRGB(solR, solG, solB);
+    luzes.sol.intensity = solInt;
+
+    // === LUZ AMBIENTE (hemisfério) ===
+    if (noite) {
+      luzes.hemi.color.setHex(0x1e2d4a);
+      luzes.hemi.groundColor.setHex(0x0a0f1c);
+      luzes.hemi.intensity = 0.12;
+    } else if (h < 0.30) {
+      luzes.hemi.color.setHex(0xe8a060);
+      luzes.hemi.groundColor.setHex(0x3a3028);
+      luzes.hemi.intensity = _lerp(0.1, 0.6, tAmanhec);
+    } else {
+      luzes.hemi.color.setHex(0xe8f8ff);
+      luzes.hemi.groundColor.setHex(0x4a5e48);
+      luzes.hemi.intensity = _lerp(0.6, 0.45, tEntard) * Math.max(0.5, clima.solar);
+    }
+
+    // === LUZ LUNAR ===
+    luzes.luar.intensity = noite ? _lerp(0.06, 0.3, tNoite) * (1 - nublado * 0.8) : 0.0;
+
+    // === CHUVA ===
     if (chuva) {
       chuva.visible = clima.chuva > 0;
       if (chuva.visible) {
         var pos = chuva.geometry.attributes.position;
+        var vel = 0.18 + clima.chuva * 0.12;
         for (var i = 0; i < pos.count; i++) {
-          var y = pos.getY(i) - 0.16;
-          pos.setY(i, y < 0.15 ? 9 : y);
+          var y = pos.getY(i) - vel;
+          pos.setY(i, y < 0.05 ? 9 : y);
         }
         pos.needsUpdate = true;
+        chuva.material.opacity = Math.min(1, 0.5 + clima.chuva * 0.5);
       }
     }
+
     return noite;
   }
 
@@ -2680,17 +3897,39 @@
         if (t.s) mz += 1;
         if (t.a) mx -= 1;
         if (t.d) mx += 1;
-        if (t[' '] && fisica.noChao) {
+
+        // Coyote time: conta tempo fora do chão
+        if (fisica.noChao) {
+          fisica.coyoteTime = 0.12;
+        } else {
+          fisica.coyoteTime = Math.max(0, fisica.coyoteTime - dt);
+        }
+
+        // Jump buffer: registra o espaço mesmo um pouco antes de tocar o chão
+        if (t[' ']) {
+          fisica.jumpBuffer = 0.15;
+        } else {
+          fisica.jumpBuffer = Math.max(0, fisica.jumpBuffer - dt);
+        }
+
+        // Pula se tem buffer E está no chão (ou dentro do coyote time)
+        if (fisica.jumpBuffer > 0 && fisica.coyoteTime > 0) {
           pulou = true;
           fisica.velocidadeY = fisica.forcaPulo;
           fisica.noChao = false;
+          fisica.coyoteTime = 0;
+          fisica.jumpBuffer = 0;
         }
+      }
+
+      // Qualquer tecla de movimento cancela o auto-caminhar do clique
+      if (mx !== 0 || mz !== 0) {
+        selecionado = null;
+        malhaSelecao.visible = false;
       }
       
       // === FISICA DE MOVIMENTO ===
       if (mx !== 0 || mz !== 0) {
-        selecionado = null;
-        malhaSelecao.visible = false;
         var norma = Math.sqrt(mx * mx + mz * mz);
         mx /= norma; mz /= norma;
         
@@ -2700,9 +3939,9 @@
         var dirX = mx * c + mz * s;
         var dirZ = -mx * s + mz * c;
         
-        // Aplicar aceleração
-        fisica.velocidade.x += dirX * fisica.aceleracao;
-        fisica.velocidade.z += dirZ * fisica.aceleracao;
+        // Aplicar aceleração escalada por dt
+        fisica.velocidade.x += dirX * fisica.aceleracao * dt;
+        fisica.velocidade.z += dirZ * fisica.aceleracao * dt;
         
         // Limitar velocidade máxima
         var velHorizontal = Math.sqrt(
@@ -2719,31 +3958,19 @@
         malhaFazendeiro.rotation.y = Math.atan2(fisica.velocidade.x, fisica.velocidade.z);
       } else {
         andando = false;
-        // Aplicar fricção
-        fisica.velocidade.x *= fisica.friccao;
-        fisica.velocidade.z *= fisica.friccao;
-        
-        if (selecionado) {
-          var alvo = posicaoDe(selecionado);
-          var dx = alvo[0] - malhaFazendeiro.position.x;
-          var dz = alvo[2] - malhaFazendeiro.position.z;
-          var distancia = Math.sqrt(dx * dx + dz * dz);
-          
-          if (distancia > 0.1) {
-            malhaFazendeiro.position.x += dx * 0.12;
-            malhaFazendeiro.position.z += dz * 0.12;
-            malhaFazendeiro.rotation.y = Math.atan2(dx, dz);
-          }
-        }
+        // Fricção correta: desacelera gradualmente (não multiplica por 14!)
+        var fatorFriccao = Math.max(0, 1 - fisica.friccao * dt);
+        fisica.velocidade.x *= fatorFriccao;
+        fisica.velocidade.z *= fatorFriccao;
       }
       
-      // === APLICAR GRAVIDADE ===
-      fisica.velocidadeY += fisica.gravidade;
+      // === APLICAR GRAVIDADE (escalada por dt) ===
+      fisica.velocidadeY += fisica.gravidade * dt;
       
-      // Calcular nova posição
-      var novaPosX = malhaFazendeiro.position.x + fisica.velocidade.x;
-      var novaPosY = malhaFazendeiro.position.y + fisica.velocidadeY;
-      var novaPosZ = malhaFazendeiro.position.z + fisica.velocidade.z;
+      // Calcular nova posição (integração por dt: velocidade é por segundo)
+      var novaPosX = malhaFazendeiro.position.x + fisica.velocidade.x * dt;
+      var novaPosY = malhaFazendeiro.position.y + fisica.velocidadeY * dt;
+      var novaPosZ = malhaFazendeiro.position.z + fisica.velocidade.z * dt;
       
       // === DETECÇÃO DE COLISÃO COM OBSTÁCULOS ===
       var colidiu = false;
@@ -2765,14 +3992,37 @@
         }
       }
       
-      // === LIMITES DO MAPA ===
-      var limite = (D.GRADE / 2 + 1) * STEP;
+      // === COLISÃO COM LOTES TRAVADOS (fora do terreno comprado) ===
+      // Blocos bloqueados têm y = -0.08 (parede rebaixada); o fazendeiro não
+      // pode pisar neles: tenta deslizar pelos eixos antes de travar.
+      var blocoAlvo = blocoSobXZ(novaPosX, novaPosZ);
+      if (blocoAlvo && blocoAlvo.bloqueado) {
+        var posAtualX = malhaFazendeiro.position.x;
+        var posAtualZ = malhaFazendeiro.position.z;
+        var blocoEixoX = blocoSobXZ(novaPosX, posAtualZ);
+        if (!blocoEixoX || !blocoEixoX.bloqueado) {
+          novaPosZ = posAtualZ;
+        } else {
+          var blocoEixoZ = blocoSobXZ(posAtualX, novaPosZ);
+          if (!blocoEixoZ || !blocoEixoZ.bloqueado) {
+            novaPosX = posAtualX;
+          } else {
+            novaPosX = posAtualX;
+            novaPosZ = posAtualZ;
+          }
+        }
+        fisica.velocidade.x *= 0.4;
+        fisica.velocidade.z *= 0.4;
+      }
+
+      // === LIMITES DO MAPA (cerca do perímetro) ===
+      var limite = meio - TILE * 0.4;
       novaPosX = Math.max(-limite, Math.min(limite, novaPosX));
       novaPosZ = Math.max(-limite, Math.min(limite, novaPosZ));
       
-      // === CHÃO ===
-      if (novaPosY <= 0) {
-        novaPosY = 0;
+      // === CHÃO (topo dos blocos) ===
+      if (novaPosY <= ALTURA_CHAO) {
+        novaPosY = ALTURA_CHAO;
         fisica.velocidadeY = 0;
         fisica.noChao = true;
       } else {
@@ -2814,7 +4064,7 @@
         }
       }
       
-      if (!livre.ligado) ajustarCamera(az, pol, dist);
+      if (!livre.ligado) ajustarCamera(az, pol, dist, dt);
     }
     
     // === ANIMAR ITENS COLOCADOS NO MODO CONSTRUCAO ===
@@ -2960,8 +4210,13 @@
 
     function pegar(mouseX, mouseY) {
       if (!mirarPonteiro(mouseX, mouseY)) return null;
-      var hits = raio.intersectObjects(malhasBloco, false);
-      return hits.length ? hits[0].object.userData.bloco : null;
+      // malhasBloco são Groups — precisa de recursive=true para atingir os filhos
+      var hits = raio.intersectObjects(malhasBloco, true);
+      if (!hits.length) return null;
+      // Sobe pela hierarquia até encontrar o objeto com userData.bloco
+      var obj = hits[0].object;
+      while (obj && !obj.userData.bloco) obj = obj.parent;
+      return obj ? obj.userData.bloco : null;
     }
 
     // o ponteiro que comanda o arraste de construção é o mesmo que pegou o
@@ -3112,6 +4367,14 @@
       arrastando = false;
     });
 
+    // Números 1..8 escolhem a ferramenta da barra: devolve o índice na
+    // lista FERRAMENTAS, ou -1 quando a tecla não é um atalho válido.
+    function indiceDaTeclaFerramenta(k) {
+      if (!/^[1-9]$/.test(k)) return -1;
+      var indice = Number(k) - 1;
+      return indice < FERRAMENTAS.length ? indice : -1;
+    }
+
     // R não é tecla de movimento: ela gira a construção em 90 graus.
     function teclasDeMovimento(k) {
       return k === 'w' || k === 'a' || k === 's' || k === 'd' || k === 'q'
@@ -3126,6 +4389,26 @@
     global.addEventListener('keydown', function (ev) {
       var emCampo = ev.target && /INPUT|SELECT|TEXTAREA/.test(ev.target.tagName || '');
       var k = ev.key.toLowerCase();
+
+      // Números 1..8 trocam a ferramenta (mesmo caminho do clique). Fica
+      // fora quando o jogo está num campo de texto, com a loja aberta ou com
+      // Ctrl/Alt/⌘ (para não atropelar os atalhos do navegador).
+      if (!emCampo && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        var atalho = indiceDaTeclaFerramenta(k);
+        if (atalho >= 0) {
+          var loja = ui('loja');
+          if (!loja || loja.hidden) {
+            var ferramentaAtalho = FERRAMENTAS[atalho];
+            ev.preventDefault();
+            selecionarFerramenta(ferramentaAtalho.id);
+            // o modo construção já avisa sozinho ao ligar/desligar
+            if (ferramentaAtalho.id !== 'construcao') {
+              aviso(ferramentaAtalho.nome + ' selecionado (tecla ' + (atalho + 1) + ').', false);
+            }
+            return;
+          }
+        }
+      }
 
       // R gira o item antes de soltar
       if (!emCampo && k === 'r' && modoConstrucao.ativo && modoConstrucao.preview) {
