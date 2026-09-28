@@ -1818,18 +1818,21 @@
     baseMesh.castShadow = !b.bloqueado;
     grupo.add(baseMesh);
 
-    if (!b.bloqueado && b.fertilidade > 0.6 && b.poluicao < 0.3 && !b.nativo) {
+    // SOLO ARADO: mostra sulcos de terra preparada para plantio
+    if (!b.bloqueado && b.arado && !b.nativo && !b.cultivo) {
       for (var s = -1; s <= 1; s++) {
         var sulco = new THREE.Mesh(
-          new THREE.BoxGeometry(TILE * 0.9, 0.035, 0.14),
-          materialBase(0x4a3420, "soil", { roughness: 0.92 }),
+          new THREE.BoxGeometry(TILE * 0.92, 0.04, 0.16),
+          materialBase(0x5d4a35, "soil", { roughness: 0.95 }),
         );
-        sulco.position.set(0, 0.16, s * 0.28);
+        sulco.position.set(0, 0.165, s * 0.3);
         sulco.receiveShadow = true;
         sulco.castShadow = true;
         grupo.add(sulco);
       }
-    } else if (!b.bloqueado && b.poluicao > 0.45) {
+    } 
+    // Mancha de poluição
+    else if (!b.bloqueado && b.poluicao > 0.45) {
       var mancha = new THREE.Mesh(
         new THREE.CylinderGeometry(0.25, 0.28, 0.02, 7),
         materialBase(0x32283a, null, { roughness: 0.6, metalness: 0.2 }),
@@ -4401,6 +4404,39 @@
       baseMesh.material.color.setHex(corDoSolo(b));
       malha.position.y = b.bloqueado ? -0.08 : 0;
       baseMesh.material.roughness = b.bloqueado ? 0.98 : 0.88;
+      
+      // ATUALIZA SULCOS DE SOLO ARADO
+      // Remove sulcos antigos (exceto o baseMesh e manchas de poluição)
+      var filhosParaRemover = [];
+      malha.children.forEach(function(c) {
+        if (c !== baseMesh && c.geometry) {
+          // Remove se for BoxGeometry (sulco) ou não for CylinderGeometry (mancha)
+          if (c.geometry.type === 'BoxGeometry' || 
+              (c.geometry.type !== 'CylinderGeometry' && c.geometry.type !== 'PlaneGeometry')) {
+            filhosParaRemover.push(c);
+          }
+        }
+      });
+      
+      filhosParaRemover.forEach(function(c) {
+        malha.remove(c);
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) c.material.dispose();
+      });
+      
+      // Adiciona novos sulcos se o solo foi arado
+      if (!b.bloqueado && b.arado && !b.cultivo) {
+        for (var s = -1; s <= 1; s++) {
+          var sulco = new THREE.Mesh(
+            new THREE.BoxGeometry(TILE * 0.92, 0.04, 0.16),
+            materialBase(0x5d4a35, "soil", { roughness: 0.95 }),
+          );
+          sulco.position.set(0, 0.165, s * 0.3);
+          sulco.receiveShadow = true;
+          sulco.castShadow = true;
+          malha.add(sulco);
+        }
+      }
     });
 
     grupoEstruturas.clear();
@@ -4698,13 +4734,17 @@
     }
 
     var iconeClimaEl = ui("icone-clima");
-    if (iconeClimaEl && iconeClimaEl.children.length === 0) {
+    if (iconeClimaEl) {
+      // Atualiza o ícone do clima dinamicamente
+      iconeClimaEl.textContent = "";
       var svgClima = criarIconeSVG(idIconeClima);
       iconeClimaEl.appendChild(svgClima);
     }
 
     var iconeTempoEl = ui("icone-tempo");
-    if (iconeTempoEl && iconeTempoEl.children.length === 0) {
+    if (iconeTempoEl) {
+      // Atualiza o ícone do tempo dinamicamente
+      iconeTempoEl.textContent = "";
       var svgTempo = criarIconeSVG(idIconeTempo);
       iconeTempoEl.appendChild(svgTempo);
     }
@@ -4876,6 +4916,101 @@
 
     caixa.textContent = "";
     caixa.appendChild(lista);
+
+    // Separador visual antes do botão de renovar
+    var separador = document.createElement("div");
+    separador.style.cssText =
+      "margin: 24px 0 16px; " +
+      "height: 1px; " +
+      "background: var(--pale); " +
+      "opacity: 0.5;";
+    caixa.appendChild(separador);
+
+    // Cartão de aviso antes do botão
+    var avisoRenovar = document.createElement("div");
+    avisoRenovar.style.cssText =
+      "padding: 14px 16px; " +
+      "background: linear-gradient(135deg, rgba(164, 64, 47, 0.08), rgba(164, 64, 47, 0.04)); " +
+      "border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); " +
+      "border-radius: 12px; " +
+      "margin-bottom: 12px; " +
+      "font-size: 0.82rem; " +
+      "color: var(--muted); " +
+      "line-height: 1.5;";
+    avisoRenovar.innerHTML =
+      '<strong style="color: var(--danger); display: block; margin-bottom: 4px; font-size: 0.88rem;">⚠️ Zona de Perigo</strong>' +
+      "Renovar a fazenda RESETA TUDO: dinheiro, XP, terreno, construções e plantações. Você volta ao estado inicial!";
+    caixa.appendChild(avisoRenovar);
+
+    // Botão de renovar estilizado
+    var botaoRenovar = document.createElement("button");
+    botaoRenovar.className = "botao-renovar-fazenda";
+    botaoRenovar.type = "button";
+    botaoRenovar.innerHTML = '<span style="margin-right: 8px;"></span>Renovar Fazenda';
+    botaoRenovar.style.cssText =
+      "width: 100%; " +
+      "padding: 14px 20px; " +
+      "background: linear-gradient(135deg, var(--danger), color-mix(in srgb, var(--danger) 85%, black)); " +
+      "border: 1px solid var(--danger); " +
+      "border-radius: 999px; " +
+      "color: var(--pale); " +
+      "font-family: inherit; " +
+      "font-size: 0.92rem; " +
+      "font-weight: 600; " +
+      "cursor: pointer; " +
+      "transition: transform 160ms ease, box-shadow 200ms ease, opacity 160ms ease; " +
+      "box-shadow: 0 4px 12px rgba(164, 64, 47, 0.25);";
+
+    botaoRenovar.onmouseover = function () {
+      this.style.transform = "translateY(-2px)";
+      this.style.boxShadow = "0 8px 20px rgba(164, 64, 47, 0.35)";
+    };
+
+    botaoRenovar.onmouseout = function () {
+      this.style.transform = "translateY(0)";
+      this.style.boxShadow = "0 4px 12px rgba(164, 64, 47, 0.25)";
+    };
+
+    botaoRenovar.onmousedown = function () {
+      this.style.transform = "translateY(0) scale(0.98)";
+    };
+
+    botaoRenovar.onmouseup = function () {
+      this.style.transform = "translateY(-2px) scale(1)";
+    };
+
+    botaoRenovar.onclick = function () {
+      var confirmacao = confirm(
+        "🚨 ATENÇÃO! AÇÃO IRREVERSÍVEL! 🚨\n\n" +
+          "Renovar a fazenda irá RESETAR COMPLETAMENTE:\n\n" +
+          "❌ Todo o seu dinheiro\n" +
+          "❌ Todo o seu XP e nível\n" +
+          "❌ Todas as plantações\n" +
+          "❌ Todas as construções\n" +
+          "❌ Todo o terreno\n" +
+          "❌ Todos os itens comprados\n\n" +
+          "⚠️ Você voltará ao INÍCIO DO JOGO como se nunca tivesse jogado!\n\n" +
+          "TEM CERTEZA ABSOLUTA que deseja APAGAR TUDO?"
+      );
+
+      if (confirmacao) {
+        var segundaConfirmacao = confirm(
+          "⚠️ ÚLTIMA CHANCE!\n\n" +
+            "Você está prestes a perder TODO o seu progresso.\n" +
+            "Esta ação NÃO PODE SER DESFEITA.\n\n" +
+            "Confirma que deseja RESETAR TUDO mesmo?"
+        );
+        
+        if (segundaConfirmacao) {
+          // Apaga TUDO e recarrega IMEDIATAMENTE
+          C.apagar();
+          aviso("Resetando tudo...", false);
+          location.reload();
+        }
+      }
+    };
+
+    caixa.appendChild(botaoRenovar);
   }
 
   var ICONES_INVENTARIO = {

@@ -13,7 +13,8 @@
       cultivo: null,
       estrutura: null,
       nativo: false,
-      bloqueado: true
+      bloqueado: true,
+      arado: false  // NOVO: indica se o solo foi preparado com enxada/trator
     };
   }
 
@@ -91,6 +92,8 @@
         b.bloqueado = false;
         b.cultivo = null;
         b.estrutura = null;
+        // Terra boa já vem arada e pronta para plantar
+        b.arado = estadoId === 'fertil';
       }
     }
   }
@@ -338,6 +341,9 @@
       return { ok: false, msg: 'Energia insuficiente para o ' + modelo.nome + ' (' + custo + ' necessarios).' };
     }
     if (custo) estado.energia -= custo;
+    bloco.arado = true;  // MARCA O SOLO COMO ARADO (trator também)
+    // Limpa a mata nativa quando o trator passa
+    if (bloco.nativo) bloco.nativo = false;
     bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.1);
     bloco.umidade = Math.min(1, bloco.umidade + 0.08);
     if (modelo.polui) bloco.poluicao = Math.min(1, bloco.poluicao + modelo.polui * 0.4);
@@ -357,6 +363,7 @@
       if (construcaoNoBloco(estado, bloco)) {
         return { ok: false, msg: 'Ha uma construcao aqui. Remova antes de plantar.' };
       }
+      if (!bloco.arado) return { ok: false, msg: 'Prepare o solo com a enxada antes de plantar.' };
       if (bloco.cultivo) return { ok: false, msg: 'Ja tem algo plantado aqui.' };
       if (bloco.fertilidade < 0.15) return { ok: false, msg: 'Solo pobre demais. Adube antes.' };
       var cultura = D.CULTURAS[estado.semente];
@@ -494,8 +501,42 @@
 
     if (id === 'regador') return AÇÕES.regar(estado, bloco);
     if (id === 'enxada') {
+      // Se tem plantação, COLHE primeiro (se estiver pronta) mas MANTÉM o arado
+      if (bloco.cultivo) {
+        if (bloco.cultivo.pronto) {
+          var cultura = D.CULTURAS[bloco.cultivo.id];
+          var bonus = 1 + (indiceDePegada(estado) / 100) * 0.6;
+          var valor = Math.round(cultura.vende * bonus * (0.6 + bloco.fertilidade * 0.6));
+          estado.dinheiro += valor;
+          estado.estatisticas.colhidas++;
+          bloco.cultivo = null;
+          // MANTÉM o arado após colher (não remove)
+          bloco.umidade = Math.max(0, bloco.umidade - 0.12);
+          var subiu = ganharXp(estado, cultura.xp);
+          return {
+            ok: true,
+            msg: 'Colheita de ' + cultura.nome + ': $' + valor + '.' + (subiu ? ' Nivel ' + estado.nivel + '!' : ''),
+            tipo: 'colheita',
+            valor: valor
+          };
+        } else {
+          return { ok: false, msg: 'A plantacao ainda nao esta madura.' };
+        }
+      }
+      
+      // Se já está arado (sem plantação), DESARA (volta ao normal)
+      if (bloco.arado) {
+        bloco.arado = false;
+        bloco.nativo = true;  // Volta a ser nativo (verde)
+        return { ok: true, msg: 'Solo nivelado. Vegetacao retorna.', tipo: 'enxada' };
+      }
+      
+      // Se não está arado, ARA
+      bloco.arado = true;
       bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.12);
-      return { ok: true, msg: 'Solo remexido.', tipo: 'enxada' };
+      // Limpa a mata nativa quando ara
+      if (bloco.nativo) bloco.nativo = false;
+      return { ok: true, msg: 'Solo preparado para plantio.', tipo: 'enxada' };
     }
     if (id === 'machado') {
       if (bloco.estrutura === 'arvore' || bloco.nativo) {
@@ -671,7 +712,8 @@
       if (b.umidade < 0.2) {
         b.fertilidade = Math.max(0, b.fertilidade - 0.012 * passo);
       }
-      b.poluicao = Math.min(1, b.poluicao + 0.006 * passo);
+      // REMOVIDO: poluição não aumenta automaticamente mais
+      // b.poluicao = Math.min(1, b.poluicao + 0.006 * passo);
 
       if (b.cultivo && !b.cultivo.pronto) {
         var cultura = D.CULTURAS[b.cultivo.id];
@@ -744,6 +786,7 @@
             destino.estrutura = velho.estrutura;
             destino.nativo = velho.nativo;
             destino.bloqueado = velho.bloqueado;
+            destino.arado = velho.arado || false;  // Compatibilidade com saves antigos
           }
         }
 
