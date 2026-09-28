@@ -4,13 +4,18 @@ window.RaizJogo = (function () {
   var GRADE = 18;
   var LOTE = 3;
   var LADO_LOTE = GRADE / LOTE;
-  var DIA_SEGUNDOS = 90;
+  // 1 dia de jogo = 5 minutos reais, entao 1 hora de jogo dura ~12.5s.
+  var DIA_SEGUNDOS = 300;
+  // Teto do passo de simulação. Com o dia em 300s, 0.12s é ~0.6% do dia:
+  // abaixo da taxa normal de quadros (16ms) nao ha ganho real, e acima disso
+  // um quadro perdido (aba em segundo plano, maquina dormindo) comecaria a
+  // teleportar o relogio. O teto deixa o mundo andar devagar em vez de pular.
+  var DT_MAXIMO = 0.12;
 
   var ESTADOS_LOTE = {
-    MATO: { id: 'mato', nome: 'Mata nativa', custo: 4, fertilidade: 0.8, umidade: 0.5, poluicao: 0, bonus: 18, desc: 'Vegetacao a preservar: vale muito em pontos ecologicos.' },
-    ARIDO: { id: 'arido', nome: 'Solo árido', custo: 6, fertilidade: 0.25, umidade: 0.15, poluicao: 0.05, bonus: 0, desc: 'Seco e duro. Precisa de irrigação e adubo.' },
-    POLUIDO: { id: 'poluido', nome: 'Resíduos antigos', custo: 10, fertilidade: 0.2, umidade: 0.3, poluicao: 0.8, bonus: 0, desc: 'Passou por descarte incorreto. Exige des poluição.' },
-    FERtil: { id: 'fertil', nome: 'Terra boa', custo: 8, fertilidade: 0.75, umidade: 0.5, poluicao: 0, bonus: 8, desc: 'Pronta para plantar.' }
+    MATO: { id: 'mato', nome: 'Mata nativa', custo: 4, fertilidade: 0.8, umidade: 0.5, bonus: 18, desc: 'Fertilidade alta e umidade de sobra. Ótimo para plantar direto.' },
+    ARIDO: { id: 'arido', nome: 'Solo árido', custo: 6, fertilidade: 0.25, umidade: 0.15, bonus: 0, desc: 'Seco e duro. Precisa de irrigação e adubo.' },
+    FERtil: { id: 'fertil', nome: 'Terra boa', custo: 8, fertilidade: 0.75, umidade: 0.5, bonus: 8, desc: 'Pronta para plantar.' }
   };
 
   var CULTURAS = {
@@ -23,15 +28,16 @@ window.RaizJogo = (function () {
   };
 
   var EQUIPAMENTOS = {
-    enxada: { id: 'enxada', nome: 'Enxada', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'enxada', desc: 'Ferramenta manual. Prepara o solo.', energia: 0, polui: 0 },
-    regador: { id: 'regador', nome: 'Regador', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'regador', desc: 'Molha um bloco à mão.', energia: 0, polui: 0 },
-    trator: { id: 'trator', nome: 'Trator antigo', aba: 'equipamentos', custo: 180, nivel: 2, icone: 'trator', desc: 'Prepara 4 blocos de uma vez. Queima diesel e polui o solo. Exposto no terreno, dá para subir e dirigir.', energia: 0, polui: 0.22, raio: 2, prepara: true },
-    tratorEletrico: { id: 'tratorEletrico', nome: 'Trator elétrico', aba: 'equipamentos', custo: 460, nivel: 4, icone: 'trator', desc: 'Prepara 4 blocos sem emitir nada. Consome energia. Exposto no terreno, dá para subir e dirigir.', energia: 3, polui: 0, raio: 2, prepara: true },
-    drone: { id: 'drone', nome: 'Drone de semeadura', aba: 'equipamentos', custo: 620, nivel: 5, icone: 'drone', desc: 'Planta 3 blocos ao mesmo tempo. Gasta energia.', energia: 5, polui: 0, planta: true, raio: 1 },
-    colheitadeira: { id: 'colheitadeira', nome: 'Colheitadeira solar', aba: 'equipamentos', custo: 780, nivel: 6, icone: 'colheitadeira', desc: 'Colhe 4 blocos maduros de uma vez. Movida a energia solar.', energia: 4, polui: 0, colhe: true, raio: 2 },
-    gotejamento: { id: 'gotejamento', nome: 'Irrigação gotejamento', aba: 'equipamentos', custo: 240, nivel: 3, icone: 'gota', desc: 'Mantém a umidade alta nos 4 blocos vizinhos, o dia todo.', energia: 1, polui: 0, raio: 2,_passivo: true },
-    composteira: { id: 'composteira', nome: 'Composteira', aba: 'equipamentos', custo: 160, nivel: 2, icone: 'composteira', desc: 'Adubo orgânico: +fertilidade e -poluição todo dia.', energia: 0, polui: -0.18, raio: 1, _passivo: true },
-    arvore: { id: 'arvore', nome: 'Reflorestamento', aba: 'equipamentos', custo: 40, nivel: 1, icone: 'arvore', desc: 'Planta nativa. Soma pontos ecológicos e segura o solo.', energia: 0, polui: -0.12, refloresta: true }
+    maos: { id: 'maos', nome: 'Mãos', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'maos', desc: 'Suas mãos vazias. Não faz nada quando selecionado.', energia: 0 },
+    enxada: { id: 'enxada', nome: 'Enxada', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'enxada', desc: 'Ferramenta manual. Prepara o solo.', energia: 0 },
+    regador: { id: 'regador', nome: 'Regador', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'regador', desc: 'Molha um bloco à mão.', energia: 0 },
+    trator: { id: 'trator', nome: 'Trator antigo', aba: 'equipamentos', custo: 180, nivel: 2, icone: 'trator', desc: 'Prepara 4 blocos de uma vez. Não gasta energia. Exposto no terreno, dá para subir e dirigir.', energia: 0, raio: 2, prepara: true },
+    tratorEletrico: { id: 'tratorEletrico', nome: 'Trator elétrico', aba: 'equipamentos', custo: 460, nivel: 4, icone: 'trator', desc: 'Prepara 4 blocos. Consome energia. Exposto no terreno, dá para subir e dirigir.', energia: 3, raio: 2, prepara: true },
+    drone: { id: 'drone', nome: 'Drone de semeadura', aba: 'equipamentos', custo: 620, nivel: 5, icone: 'drone', desc: 'Planta 3 blocos ao mesmo tempo. Gasta energia.', energia: 5, planta: true, raio: 1 },
+    colheitadeira: { id: 'colheitadeira', nome: 'Colheitadeira solar', aba: 'equipamentos', custo: 780, nivel: 6, icone: 'colheitadeira', desc: 'Colhe 4 blocos maduros de uma vez. Movida a energia solar.', energia: 4, colhe: true, raio: 2 },
+    gotejamento: { id: 'gotejamento', nome: 'Irrigação gotejamento', aba: 'equipamentos', custo: 240, nivel: 3, icone: 'gota', desc: 'Mantém a umidade alta nos 4 blocos vizinhos, o dia todo.', energia: 1, raio: 2,_passivo: true },
+    composteira: { id: 'composteira', nome: 'Composteira', aba: 'equipamentos', custo: 160, nivel: 2, icone: 'composteira', desc: 'Adubo orgânico: +fertilidade todo dia.', energia: 0, raio: 1, _passivo: true },
+    arvore: { id: 'arvore', nome: 'Reflorestamento', aba: 'equipamentos', custo: 40, nivel: 1, icone: 'arvore', desc: 'Planta nativa. Deixa o solo mais fértil com o tempo.', energia: 0, refloresta: true }
   };
 
   var ENERGIA = {
@@ -42,9 +48,13 @@ window.RaizJogo = (function () {
     caixa: { id: 'caixa', nome: 'Caixa d’água', aba: 'energia', custo: 90, nivel: 2, icone: 'agua', desc: 'Guarda água da chuva para o gotejamento.', capacidadeAgua: 30 }
   };
 
+  // `umidade` e a variacao por passo de simulacao do clima sobre o solo; os
+  // valores negativos secam o terreno. A calibracao foi medida em tres
+  // cenarios: sem regar a planta nao morre mas empaca, regando algumas
+  // vezes por dia ela amadurece no tempo certo, e o 100% nao e permanente.
   var CLIMAS = {
-    sol: { id: 'sol', nome: 'Sol forte', chuva: 0, vento: 0.25, solar: 1.35, umidade: -0.03 },
-    nublado: { id: 'nublado', nome: 'Nublado', chuva: 0, vento: 0.45, solar: 0.6, umidade: -0.005 },
+    sol: { id: 'sol', nome: 'Sol forte', chuva: 0, vento: 0.25, solar: 1.35, umidade: -0.07 },
+    nublado: { id: 'nublado', nome: 'Nublado', chuva: 0, vento: 0.45, solar: 0.6, umidade: -0.03 },
     chuva: { id: 'chuva', nome: 'Chuva', chuva: 1, vento: 0.6, solar: 0.3, umidade: 0.16 },
     tempestade: { id: 'tempestade', nome: 'Tempestade', chuva: 1.6, vento: 1.1, solar: 0.15, umidade: 0.26 }
   };
@@ -55,20 +65,7 @@ window.RaizJogo = (function () {
 
   var SEMENTES_INICIAIS = { milho: 12, soja: 12, trigo: 12, girassol: 6, hortalica: 6, feija: 6 };
 
-  // === MODO CONSTRUÇÃO (exposição dos equipamentos no terreno) ===
-  // Lista fechada do que pode ser posicionado no mapa, com o tamanho real
-  // de cada modelo: é o que alimenta a colisão do personagem em game-view.js.
-  //   raio   -> raio de colisão em blocos (TILE = 1)
-  //   altura -> altura do modelo, usada no teste de colisão vertical
-  //   dirigivel -> o fazendeiro pode subir e dirigir esse modelo no terreno
-  //   velMax/velAcc/velVir/velPivo -> unidades por segundo e radianos por
-  //   segundo do veículo dirigido. `velPivo` é o giro com o trator parado:
-  //   sem ele, alinhar a máquina para sair de um canto exige refazer a
-  //   manobra, e dirigir fica mais lento que andar a pé.
   var CONSTRUCOES = {
-    // Limite de construções por lote. null = sem limite artificial:
-    // a regra real é "um bloco livre recebe no máximo uma construção",
-    // ou seja, até LOTE * LOTE (9) construções num lote de 3x3.
     limitePorLote: null,
     itens: {
       trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.42, altura: 0.68, dirigivel: true, velMax: 4.8, velAcc: 12, velVir: 3.4, velPivo: 2.0, volta: true },
@@ -91,6 +88,7 @@ window.RaizJogo = (function () {
     LOTE: LOTE,
     LADO_LOTE: LADO_LOTE,
     DIA_SEGUNDOS: DIA_SEGUNDOS,
+    DT_MAXIMO: DT_MAXIMO,
     ESTADOS_LOTE: ESTADOS_LOTE,
     CULTURAS: CULTURAS,
     EQUIPAMENTOS: EQUIPAMENTOS,

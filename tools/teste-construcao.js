@@ -72,10 +72,8 @@ const arv = C.usarEquipamento(estado, 'arvore', b1);
 ok('arvore nativa em bloco com construcao falha', !arv.ok, arv.msg);
 
 console.log('\n[5] construcao nao altera os calculos de jogo');
-const pegadaAntes = C.indiceDePegada(estado);
 const producaoAntes = C.producaoEnergia(estado).geracao;
 ok('estado.itens intacto apos construir', estado.itens.trator === 2, estado.itens.trator);
-ok('pegada ecológica nao muda por construir', C.indiceDePegada(estado) === pegadaAntes);
 ok('energia gerada nao muda por construir', C.producaoEnergia(estado).geracao === producaoAntes);
 ok('equipamento continua usavel apos construir',
   C.usarEquipamento(estado, 'trator', C.blocoEm(estado, b1.x + 2, b1.z)).ok !== undefined);

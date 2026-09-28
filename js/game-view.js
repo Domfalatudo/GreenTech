@@ -13,20 +13,19 @@
 
   var TEX = global.RaizTextures || null;
   var PAL = {
-    soloSeco: 0xa8895f,
-    soloUmido: 0x6f5334,
-    soloFertil: 0x5d7a3f,
-    soloPoluido: 0x4a4740,
-    mata: 0x4f7a3a,
-    terrenoVazio: 0x7d7568,
-    base: 0x6b7a52,
+    soloSeco: 0xd4a574,        // Bege claro suave (como areia de praia)
+    soloUmido: 0x9d7e5a,       // Marrom caramelo rico
+    soloFertil: 0x8bb174,      // Verde sálvia vibrante
+    mata: 0x6fba72,            // Verde floresta brilhante
+    terrenoVazio: 0xb8a898,    // Cinza-rosado suave
+    base: 0x89a76b,            // Verde musgo claro
   };
 
   var FERRAMENTAS = [
+    { id: "maos", nome: "Mãos", tipo: "item", cor: "#d4a574" },
     { id: "plantar", nome: "Plantar", tipo: "acao", cor: "#6f9a4a" },
     { id: "adubar", nome: "Adubar", tipo: "acao", cor: "#8a6b3f" },
     { id: "colher", nome: "Colher", tipo: "acao", cor: "#d8b64a" },
-    { id: "despoluir", nome: "Despoluir", tipo: "acao", cor: "#a4402f" },
     { id: "enxada", nome: "Enxada", tipo: "item", cor: "#9c8b6e" },
     { id: "regador", nome: "Regador", tipo: "item", cor: "#3f7a8f" },
     { id: "machado", nome: "Machado", tipo: "item", cor: "#8b4513" },
@@ -103,7 +102,7 @@
   var animacaoAcao = { ativa: false, tempo: 0, duracao: 0.35, tipo: "" };
 
   var plaquinhas = [];
-  var popupPlaquinha = { ativo: false, loteX: -1, loteZ: -1, plaquinha: null };
+  var popupPlaquinha = { ativo: false, loteX: -1, loteZ: -1, plaquinha: null, mouseDown: false };
 
   var modoConstrucao = {
     ativo: false,
@@ -450,7 +449,7 @@
             (tipo.bonus
               ? '<span class="tipo-bonus">+' +
                 tipo.bonus +
-                " pontos ecológicos</span>"
+                " XP</span>"
               : "") +
             (!podeComprar
               ? '<span class="tipo-bloqueio">Sem dinheiro</span>'
@@ -1753,7 +1752,6 @@
 
   function corDoSolo(b) {
     if (b.bloqueado) return PAL.terrenoVazio;
-    if (b.poluicao > 0.45) return PAL.soloPoluido;
     if (b.nativo) return PAL.mata;
     var fert = b.fertilidade;
     if (fert > 0.6) return PAL.soloFertil;
@@ -1770,19 +1768,43 @@
       Object.assign(
         {
           color: cor,
-          roughness: 0.88,
-          metalness: 0.03,
+          roughness: 0.75,
+          metalness: 0,
+          flatShading: false,
         },
         ajustes || {},
       ),
     );
     if (TEX && textura)
-      TEX.apply(mat, textura, { normalScale: 1.4, envMapIntensity: 0.7 });
+      TEX.apply(mat, textura, { normalScale: 0.4, envMapIntensity: 0.5, bumpScale: 0.003 });
     return mat;
   }
 
   function geometriaBloco() {
-    var g = new THREE.BoxGeometry(TILE, 0.3, TILE);
+    // Usar RoundedBoxGeometry para bordas arredondadas e fofas
+    var g = new THREE.BoxGeometry(TILE, 0.3, TILE, 2, 1, 2);
+    
+    // Arredondar levemente as bordas superiores
+    var pos = g.attributes.position;
+    for (var i = 0; i < pos.count; i++) {
+      var y = pos.getY(i);
+      var x = pos.getX(i);
+      var z = pos.getZ(i);
+      
+      // Suavizar cantos superiores
+      if (y > 0.12) {
+        var distX = Math.abs(x) / (TILE / 2);
+        var distZ = Math.abs(z) / (TILE / 2);
+        var dist = Math.max(distX, distZ);
+        if (dist > 0.85) {
+          var suavidade = (dist - 0.85) / 0.15;
+          pos.setY(i, y - suavidade * 0.03);
+        }
+      }
+    }
+    pos.needsUpdate = true;
+    g.computeVertexNormals();
+    
     var uv = g.attributes.uv;
     var faces = [
       [TILE, 0.3],
@@ -1807,8 +1829,6 @@
     var matAjustes = {};
     if (b.umidade > 0.55 && !b.bloqueado) {
       matAjustes = { roughness: 0.42, metalness: 0.12 };
-    } else if (b.poluicao > 0.45 && !b.bloqueado) {
-      matAjustes = { roughness: 0.95, metalness: 0.08 };
     }
     var baseMesh = new THREE.Mesh(
       geo,
@@ -1817,28 +1837,32 @@
     baseMesh.receiveShadow = true;
     baseMesh.castShadow = !b.bloqueado;
     grupo.add(baseMesh);
+    
+    // Adicionar outline sutil para visual aesthetic/cartoonesco
+    if (!b.bloqueado) {
+      var outlineGeo = new THREE.BoxGeometry(TILE * 1.02, 0.32, TILE * 1.02);
+      var outlineMat = new THREE.MeshBasicMaterial({
+        color: 0x2a3a2a,
+        side: THREE.BackSide,
+        transparent: true,
+        opacity: 0.15
+      });
+      var outline = new THREE.Mesh(outlineGeo, outlineMat);
+      outline.renderOrder = -1;
+      grupo.add(outline);
+    }
 
-    // SOLO ARADO: mostra sulcos de terra preparada para plantio
+    // SOLO ARADO: mostra sulcos de terra preparada para plantio (mais suaves)
     if (!b.bloqueado && b.arado && !b.nativo && !b.cultivo) {
       for (var s = -1; s <= 1; s++) {
         var sulco = new THREE.Mesh(
-          new THREE.BoxGeometry(TILE * 0.92, 0.04, 0.16),
-          materialBase(0x5d4a35, "soil", { roughness: 0.95 }),
+          new THREE.BoxGeometry(TILE * 0.92, 0.03, 0.14),
+          materialBase(0x6d5a45, "soil", { roughness: 0.8, transparent: true, opacity: 0.6 }),
         );
-        sulco.position.set(0, 0.165, s * 0.3);
+        sulco.position.set(0, 0.16, s * 0.3);
         sulco.receiveShadow = true;
-        sulco.castShadow = true;
         grupo.add(sulco);
       }
-    } 
-    // Mancha de poluição
-    else if (!b.bloqueado && b.poluicao > 0.45) {
-      var mancha = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.25, 0.28, 0.02, 7),
-        materialBase(0x32283a, null, { roughness: 0.6, metalness: 0.2 }),
-      );
-      mancha.position.y = 0.155;
-      grupo.add(mancha);
     }
 
     grupo.userData.bloco = b;
@@ -2412,9 +2436,255 @@
     cena.add(luzes.luar);
 
     luzes.lanterna = fazPartes.lanterna;
+    
+    // Sistema de partículas: vagalumes e borboletas
+    criarVagalumes();
+    criarBorboletas();
 
     montarChuva();
     ajustarCamera(0.6, 0.72, 28);
+  }
+  
+  // === SISTEMA DE VAGALUMES (noite) ===
+  var vagalumes = [];
+  function criarVagalumes() {
+    var numVagalumes = 25;
+    for (var i = 0; i < numVagalumes; i++) {
+      var geometria = new THREE.SphereGeometry(0.08, 8, 8);
+      var material = new THREE.MeshBasicMaterial({
+        color: 0xffff88,
+        transparent: true,
+        opacity: 0
+      });
+      var vagalume = new THREE.Mesh(geometria, material);
+      
+      // Posição inicial aleatória
+      vagalume.position.x = (Math.random() - 0.5) * D.GRADE * STEP;
+      vagalume.position.y = 0.5 + Math.random() * 2;
+      vagalume.position.z = (Math.random() - 0.5) * D.GRADE * STEP;
+      
+      // Luz pontual para cada vagalume
+      var luz = new THREE.PointLight(0xffff88, 0.3, 1.5);
+      luz.position.copy(vagalume.position);
+      
+      vagalumes.push({
+        malha: vagalume,
+        luz: luz,
+        velocidade: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.3,
+          (Math.random() - 0.5) * 0.2,
+          (Math.random() - 0.5) * 0.3
+        ),
+        fase: Math.random() * Math.PI * 2,
+        tempo: 0,
+        brilho: Math.random()
+      });
+      
+      tabuleiro.add(vagalume);
+      tabuleiro.add(luz);
+    }
+  }
+  
+  // === SISTEMA DE BORBOLETAS (dia) ===
+  var borboletas = [];
+  function criarBorboletas() {
+    var numBorboletas = 15;
+    for (var i = 0; i < numBorboletas; i++) {
+      // Criar forma de borboleta simples
+      var grupo = new THREE.Group();
+      
+      // Corpo
+      var corpo = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.02, 0.15, 6),
+        new THREE.MeshBasicMaterial({ color: 0x2a2a2a })
+      );
+      corpo.rotation.x = Math.PI / 2;
+      grupo.add(corpo);
+      
+      // Asas (2 planos)
+      var coresAsas = [0xff6b9d, 0xffd93d, 0x6bcf7f, 0x4ecdc4, 0xc77dff];
+      var corAsa = coresAsas[Math.floor(Math.random() * coresAsas.length)];
+      
+      var asaEsq = new THREE.Mesh(
+        new THREE.CircleGeometry(0.12, 8),
+        new THREE.MeshBasicMaterial({ 
+          color: corAsa,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85
+        })
+      );
+      asaEsq.position.x = -0.08;
+      asaEsq.rotation.y = Math.PI / 6;
+      grupo.add(asaEsq);
+      
+      var asaDir = new THREE.Mesh(
+        new THREE.CircleGeometry(0.12, 8),
+        new THREE.MeshBasicMaterial({ 
+          color: corAsa,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.85
+        })
+      );
+      asaDir.position.x = 0.08;
+      asaDir.rotation.y = -Math.PI / 6;
+      grupo.add(asaDir);
+      
+      // Posição inicial
+      grupo.position.x = (Math.random() - 0.5) * D.GRADE * STEP;
+      grupo.position.y = 0.8 + Math.random() * 1.5;
+      grupo.position.z = (Math.random() - 0.5) * D.GRADE * STEP;
+      
+      borboletas.push({
+        grupo: grupo,
+        asaEsq: asaEsq,
+        asaDir: asaDir,
+        velocidade: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.4,
+          (Math.random() - 0.5) * 0.15,
+          (Math.random() - 0.5) * 0.4
+        ),
+        fase: Math.random() * Math.PI * 2,
+        tempo: 0
+      });
+      
+      tabuleiro.add(grupo);
+    }
+  }
+  
+  // === ATUALIZAR ILUMINAÇÃO DINÂMICA ===
+  function atualizarIluminacao(estado) {
+    if (!estado) return;
+    
+    var hora = estado.relogio; // 0 a 1
+    var ehNoite = hora < 0.22 || hora > 0.82;
+    var ehDia = hora >= 0.35 && hora < 0.68;
+    
+    // Posição do sol baseada na hora (movimento circular)
+    var angulo = hora * Math.PI * 2 - Math.PI / 2; // Começa no leste
+    var distancia = 30;
+    var alturaSol = Math.sin(angulo) * 25 + 5;
+    var posXSol = Math.cos(angulo) * distancia;
+    var posZSol = Math.sin(angulo) * distancia * 0.3;
+    
+    luzes.sol.position.set(posXSol, alturaSol, posZSol);
+    
+    // Cores e intensidades baseadas na hora
+    if (hora < 0.22) { // Madrugada
+      luzes.hemi.color.setHex(0x1a2a3a);
+      luzes.hemi.groundColor.setHex(0x0a1a2a);
+      luzes.hemi.intensity = 0.25;
+      luzes.sol.intensity = 0.1;
+      luzes.sol.color.setHex(0x4a5a7a);
+      luzes.luar.intensity = 0.4;
+      cena.fog.color.setHex(0x1a2535);
+    } else if (hora < 0.35) { // Amanhecer
+      var t = (hora - 0.22) / 0.13;
+      luzes.hemi.intensity = 0.25 + t * 0.4;
+      luzes.sol.intensity = 0.1 + t * 1.15;
+      luzes.sol.color.setHex(lerpColor(0xff8844, 0xfffaed, t));
+      luzes.luar.intensity = 0.4 * (1 - t);
+      cena.fog.color.setHex(lerpColor(0x1a2535, 0xc8d5e8, t));
+    } else if (hora < 0.68) { // Dia
+      luzes.hemi.color.setHex(0xedf5fc);
+      luzes.hemi.groundColor.setHex(0x485844);
+      luzes.hemi.intensity = 0.65;
+      luzes.sol.intensity = 1.25;
+      luzes.sol.color.setHex(0xfffaed);
+      luzes.luar.intensity = 0;
+      cena.fog.color.setHex(0xc8d5e8);
+    } else if (hora < 0.82) { // Entardecer
+      var t = (hora - 0.68) / 0.14;
+      luzes.hemi.intensity = 0.65 - t * 0.4;
+      luzes.sol.intensity = 1.25 - t * 1.15;
+      luzes.sol.color.setHex(lerpColor(0xfffaed, 0xff6644, t));
+      luzes.luar.intensity = t * 0.3;
+      cena.fog.color.setHex(lerpColor(0xc8d5e8, 0x2a1a35, t));
+    } else { // Noite
+      luzes.hemi.color.setHex(0x1a2a4a);
+      luzes.hemi.groundColor.setHex(0x0a1a2a);
+      luzes.hemi.intensity = 0.2;
+      luzes.sol.intensity = 0.05;
+      luzes.sol.color.setHex(0x3a4a6a);
+      luzes.luar.intensity = 0.35;
+      cena.fog.color.setHex(0x1a1a2a);
+    }
+    
+    // Atualizar vagalumes (visíveis à noite)
+    vagalumes.forEach(function(v) {
+      v.tempo += 0.016;
+      
+      if (ehNoite) {
+        // Movimento suave
+        v.malha.position.add(v.velocidade.clone().multiplyScalar(0.016));
+        v.luz.position.copy(v.malha.position);
+        
+        // Manter dentro dos limites
+        var limite = D.GRADE * STEP / 2;
+        if (Math.abs(v.malha.position.x) > limite) v.velocidade.x *= -1;
+        if (Math.abs(v.malha.position.z) > limite) v.velocidade.z *= -1;
+        if (v.malha.position.y < 0.3 || v.malha.position.y > 2.5) v.velocidade.y *= -1;
+        
+        // Piscar
+        v.fase += 0.05;
+        var brilho = (Math.sin(v.fase + v.brilho) + 1) * 0.5;
+        v.malha.material.opacity = brilho * 0.8;
+        v.luz.intensity = brilho * 0.4;
+        v.malha.visible = true;
+        v.luz.visible = true;
+      } else {
+        v.malha.visible = false;
+        v.luz.visible = false;
+      }
+    });
+    
+    // Atualizar borboletas (visíveis de dia)
+    borboletas.forEach(function(b) {
+      b.tempo += 0.016;
+      
+      if (ehDia) {
+        // Movimento suave
+        b.grupo.position.add(b.velocidade.clone().multiplyScalar(0.016));
+        
+        // Manter dentro dos limites
+        var limite = D.GRADE * STEP / 2;
+        if (Math.abs(b.grupo.position.x) > limite) b.velocidade.x *= -1;
+        if (Math.abs(b.grupo.position.z) > limite) b.velocidade.z *= -1;
+        if (b.grupo.position.y < 0.5 || b.grupo.position.y > 2.5) b.velocidade.y *= -1;
+        
+        // Bater asas
+        b.fase += 0.15;
+        var batida = Math.sin(b.fase) * 0.4;
+        b.asaEsq.rotation.y = Math.PI / 6 + batida;
+        b.asaDir.rotation.y = -Math.PI / 6 - batida;
+        
+        // Rotação suave
+        var direcao = Math.atan2(b.velocidade.z, b.velocidade.x);
+        b.grupo.rotation.y = direcao;
+        
+        b.grupo.visible = true;
+      } else {
+        b.grupo.visible = false;
+      }
+    });
+  }
+  
+  // Função auxiliar para interpolar cores
+  function lerpColor(cor1, cor2, t) {
+    var r1 = (cor1 >> 16) & 0xff;
+    var g1 = (cor1 >> 8) & 0xff;
+    var b1 = cor1 & 0xff;
+    
+    var r2 = (cor2 >> 16) & 0xff;
+    var g2 = (cor2 >> 8) & 0xff;
+    var b2 = cor2 & 0xff;
+    
+    var r = Math.round(r1 + (r2 - r1) * t);
+    var g = Math.round(g1 + (g2 - g1) * t);
+    var b = Math.round(b1 + (b2 - b1) * t);
+    
+    return (r << 16) | (g << 8) | b;
   }
 
   function criarArvore(x, z, escala) {
@@ -3077,7 +3347,10 @@
     var ferramenta = estado.ferramenta;
     var tool = null;
 
-    if (ferramenta === "enxada") {
+    if (ferramenta === "maos") {
+      // Mãos vazias - não adiciona nenhum modelo 3D
+      tool = null;
+    } else if (ferramenta === "enxada") {
       tool = construirEnxada();
       tool.scale.set(0.5, 0.5, 0.5);
     } else if (ferramenta === "regador") {
@@ -4406,7 +4679,8 @@
       baseMesh.material.roughness = b.bloqueado ? 0.98 : 0.88;
       
       // ATUALIZA SULCOS DE SOLO ARADO
-      // Remove sulcos antigos (exceto o baseMesh e manchas de poluição)
+      // Remove os sulcos antigos, preservando o baseMesh e o que
+      // o terreno ganhou depois (cultivo, estrutura).
       var filhosParaRemover = [];
       malha.children.forEach(function(c) {
         if (c !== baseMesh && c.geometry) {
@@ -4488,7 +4762,13 @@
 
     var path = "";
 
-    if (id === "plantar") {
+    if (id === "maos") {
+      path =
+        '<path d="M13 4.5V9l3-1.5v3.5m0 0l3-1v4c0 2-1.5 3.5-3.5 4.5L13 20v-8.5l3-3z"/>' +
+        '<path d="M13 9V4.5c0-.83-.67-1.5-1.5-1.5S10 3.67 10 4.5V9"/>' +
+        '<path d="M10 9V6.5c0-.83-.67-1.5-1.5-1.5S7 5.67 7 6.5V12"/>' +
+        '<path d="M7 12V9.5c0-.83-.67-1.5-1.5-1.5S4 8.67 4 9.5V14c0 3.5 2.5 6 6 6h3.5"/>';
+    } else if (id === "plantar") {
       path =
         '<path d="M12 22v-8m0 0c-2-1-4-3-4-6 0-2.5 1.8-4 4-4s4 1.5 4 4c0 3-2 5-4 6z"/>' +
         '<circle cx="12" cy="3" r="1" fill="currentColor"/>' +
@@ -4510,10 +4790,6 @@
         '<circle cx="8" cy="19" r="1" fill="currentColor"/>' +
         '<circle cx="12" cy="19" r="1" fill="currentColor"/>' +
         '<circle cx="16" cy="19" r="1" fill="currentColor"/>';
-    } else if (id === "despoluir") {
-      path =
-        '<path d="M12 3v15m0 0l-3 3h6l-3-3z"/>' +
-        '<path d="M9 18v-5h6v5M7 3l1 1m8-1l-1 1M3 7l1-1m16 1l-1-1"/>';
     } else if (id === "enxada") {
       path =
         '<path d="M14 4h3a2 2 0 0 1 2 2v3l-6 6m0 0l-8 8m8-8l-3-3"/>' +
@@ -4557,11 +4833,6 @@
         '<circle cx="12" cy="12" r="6"/>' +
         '<circle cx="12" cy="12" r="2" fill="currentColor"/>' +
         '<path d="M12 2v4m0 12v4M2 12h4m12 0h4"/>';
-    } else if (id === "pegada") {
-      path =
-        '<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/>' +
-        '<path d="M9.5 9.5c1 .5 1.5 2 1.5 2s1-.5 2-1.5"/>' +
-        '<path d="M10 14c.5 1 1.5 2 2 2s1.5-1 2-2"/>';
     } else if (id === "sol") {
       path =
         '<circle cx="12" cy="12" r="4" fill="currentColor"/>' +
@@ -4680,9 +4951,6 @@
     } else if (nome === "colher") {
       r = C.acoes.colher(estado, b);
       if (r.ok) animarGolpeFerramenta("colher");
-    } else if (nome === "despoluir") {
-      r = C.acoes.despoluir(estado, b);
-      if (r.ok) animarGolpeFerramenta("despoluir");
     } else {
       r = C.usarEquipamento(estado, nome, b);
       if (r.ok && nome === "machado") animarGolpeFerramenta("machado");
@@ -4698,7 +4966,6 @@
   }
 
   function pintarUI() {
-    var pegada = C.indiceDePegada(estado);
     var clima = D.CLIMAS[estado.clima];
 
     var idIconeClima = "sol";
@@ -4712,23 +4979,20 @@
       idIconeClima = "nuvem";
     else if (clima.nome.toLowerCase().includes("vento")) idIconeClima = "vento";
 
-    var hora = estado.tempo % 24;
+    // `estado.tempo` não existe: o relógio do jogo é `estado.relogio`, de 0 a 1
+    // (0 = meia-noite, 0.5 = meio-dia). Ler `estado.tempo % 24` dava sempre
+    // NaN, e o `if` caía no `else` fazendo o ícone mostrar lua o dia inteiro.
+    var hora = estado.relogio * 24;
     var idIconeTempo = "sol";
 
-    if (hora >= 0 && hora < 3) {
+    if (hora < 5.28) {
       idIconeTempo = "lua";
-    } else if (hora >= 3 && hora < 6) {
-      idIconeTempo = "lua";
-    } else if (hora >= 6 && hora < 8) {
+    } else if (hora < 8.4) {
       idIconeTempo = "amanhecer";
-    } else if (hora >= 8 && hora < 12) {
+    } else if (hora < 16.32) {
       idIconeTempo = "sol";
-    } else if (hora >= 12 && hora < 17) {
-      idIconeTempo = "sol";
-    } else if (hora >= 17 && hora < 19) {
+    } else if (hora < 19.68) {
       idIconeTempo = "entardecer";
-    } else if (hora >= 19 && hora < 21) {
-      idIconeTempo = "lua";
     } else {
       idIconeTempo = "lua";
     }
@@ -4759,10 +5023,23 @@
       agua: Math.floor(estado.agua) + "/" + Math.round(estado.aguaMax),
       nivel: String(estado.nivel),
       xp: estado.xp + "/" + D.XP_POR_NIVEL(estado.nivel),
-      pegada: pegada + "/100",
       tempo: "Dia " + estado.dias,
       clima: "",
     };
+    
+    // Atualizar relógio digital. Usa a MESMA função do tooltip do tempo:
+    // cada tela arredondava por conta propria e o minuto exibido podia
+    // divergir em 1 entre o HUD e o tooltip.
+    var relogioEl = ui("relogio-digital");
+    if (relogioEl) {
+      relogioEl.textContent = horaDoDiaTexto(estado);
+    }
+    
+    // Atualizar ícone da lua baseado na hora do dia
+    atualizarIconeLua(estado);
+    
+    // Atualizar tooltips de clima e tempo
+    atualizarTooltips(estado);
 
     Object.keys(valores).forEach(function (k) {
       var alvo = ui(k);
@@ -4785,12 +5062,280 @@
         pintarUI.valoresAnteriores[k] = novoValor;
       }
     });
+  }
 
-    var p = ui("pegada");
-    if (p) {
-      p.classList.remove("bom", "meio", "ruim");
-      p.classList.add(pegada >= 66 ? "bom" : pegada >= 33 ? "meio" : "ruim");
+  // Atualizar ícone da lua conforme a hora do dia
+  function atualizarIconeLua(estado) {
+    var iconeLua = document.querySelector('[data-ui="icone-tempo"] svg');
+    if (!iconeLua) return;
+    
+    var hora = estado.relogio; // 0 a 1 representa 24h
+    var path = "";
+    
+    // Madrugada (0 - 0.22): Lua cheia
+    if (hora < 0.22) {
+      path = '<circle cx="12" cy="12" r="9" fill="currentColor"/>';
     }
+    // Amanhecer (0.22 - 0.35): Lua minguante
+    else if (hora < 0.35) {
+      path = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor"/>';
+    }
+    // Dia (0.35 - 0.68): Sol
+    else if (hora < 0.68) {
+      path = '<circle cx="12" cy="12" r="4" fill="currentColor"/>' +
+             '<path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
+    }
+    // Entardecer (0.68 - 0.82): Sol baixo
+    else if (hora < 0.82) {
+      path = '<path d="M17 18a5 5 0 0 0-10 0"/>' +
+             '<path d="M12 9v9m-5.66-4.34l1.42 1.42m8.48 0l1.42-1.42M3.34 18h1.42m14.48 0h1.42"/>' +
+             '<circle cx="12" cy="9" r="2" fill="currentColor"/>';
+    }
+    // Noite (0.82 - 1): Lua crescente
+    else {
+      path = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" fill="currentColor"/>';
+    }
+    
+    iconeLua.innerHTML = path;
+  }
+
+  // ===== TOOLTIPS =====
+  // O HTML de cada tooltip é montado por estas funções. Elas são usadas duas
+  // vezes: uma quando o tooltip abre, e outra a cada quadro enquanto ele está
+  // aberto. Antes o innerHTML era escrito só no `mouseenter`, então a hora
+  // ficava congelada na hora em que o mouse entrou enquanto o relógio do HUD
+  // continuava andando — dava para ver 22:11 no tooltip e 21:23 no HUD.
+
+  // Uma única fonte de verdade para a hora: HUD, tooltip e barra de progresso
+  // usam sempre estes minutos. Sem isso, cada lugar arredondava por conta
+  // própria e aparecia divergência de um minuto entre as telas.
+  function minutosDoDia(estado) {
+    return Math.floor(estado.relogio * 24 * 60);
+  }
+
+  function horaDoDiaTexto(estado) {
+    var total = minutosDoDia(estado);
+    var h = Math.floor(total / 60);
+    var m = total % 60;
+    return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+  }
+
+  // Reaplica os ouvintes de mouse sobre um tooltip recriado. Sem isso, o
+  // redesenho do innerHTML trocaria os filhos e o mouse deixaria de "segurar"
+  // o tooltip, fazendo ele piscar e sumir com o cursor em cima.
+  function prenderTooltip(li, tooltip) {
+    if (tooltip.dataset.vinculado === '1') return;
+    tooltip.dataset.vinculado = '1';
+    tooltip.addEventListener('mouseenter', function() {
+      clearTimeout(li._hideTimeout);
+    });
+    tooltip.addEventListener('mouseleave', function() {
+      var t = li.querySelector('.tooltip-card');
+      if (t) t.remove();
+    });
+  }
+
+  // Decide se o tooltip deve continuar aberto quando o mouse sai do item.
+  function saiuDoTooltip(e, tooltip) {
+    var r = tooltip.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  }
+
+  function aoSairDoItem(li) {
+    li._hideTimeout = setTimeout(function() {
+      var t = li.querySelector('.tooltip-card');
+      if (t && t.parentNode) t.remove();
+    }, 100);
+  }
+
+  function htmlTooltipClima(estado) {
+    var c = D.CLIMAS[estado.clima];
+    return '<div class="tooltip-header">' +
+      '<span class="tooltip-emoji">' + getEmojiClima(estado.clima) + '</span>' +
+      '<div><h4>' + c.nome + '</h4><p>Clima Atual</p></div>' +
+      '</div>' +
+      '<div class="tooltip-stats">' +
+      '<div class="stat-item"><span class="label">☀️ Solar</span><span class="value">' + Math.round(c.solar * 100) + '%</span></div>' +
+      '<div class="stat-item"><span class="label">💨 Vento</span><span class="value">' + Math.round(c.vento * 100) + '%</span></div>' +
+      '<div class="stat-item"><span class="label">💧 Chuva</span><span class="value">' + Math.round(c.chuva * 100) + '%</span></div>' +
+      '</div>' +
+      '<div class="tooltip-divider"></div>' +
+      '<h5>Previsão Semanal</h5>' +
+      '<div class="previsao-grid">' + gerarPrevisaoSemanalHTML(estado) + '</div>';
+  }
+
+  function htmlTooltipTempo(estado) {
+    var semana = Math.floor((estado.dias - 1) / 7) + 1;
+    var diaSemana = ((estado.dias - 1) % 7) + 1;
+    var periodo = estado.estacao || 'dia';
+    var progresso = Math.round(estado.relogio * 100);
+    return '<div class="tooltip-header">' +
+      '<span class="tooltip-emoji">' + getEmojiPeriodo(periodo) + '</span>' +
+      '<div><h4>Dia ' + estado.dias + '</h4>' +
+      '<p>' + periodo.charAt(0).toUpperCase() + periodo.slice(1) + '</p></div>' +
+      '</div>' +
+      '<div class="tooltip-time-display">' +
+      '<div class="big-time">' + horaDoDiaTexto(estado) + '</div>' +
+      '<div class="time-progress">' +
+      '<div class="time-progress-bar" style="width: ' + progresso + '%"></div>' +
+      '</div></div>' +
+      '<div class="tooltip-divider"></div>' +
+      '<div class="calendario-mini">' +
+      '<div class="cal-header">Semana ' + semana + '</div>' +
+      '<div class="cal-dias">' + gerarCalendarioSemana(diaSemana) + '</div>' +
+      '</div>';
+  }
+
+  // Atualizar tooltips com informações detalhadas
+  function atualizarTooltips(estado) {
+    // Tooltip do clima com previsão semanal
+    var itemClima = document.querySelector('[data-ui="icone-clima"]');
+    if (itemClima) {
+      var liClima = itemClima.closest('li');
+      if (liClima) {
+        // Remover tooltip antigo se existir
+        var tooltipAntigo = liClima.querySelector('.tooltip-card');
+        if (tooltipAntigo) tooltipAntigo.remove();
+        
+        liClima.setAttribute('data-tooltip-html', 'true');
+        liClima.removeAttribute('data-tooltip');
+        
+        // Se já está aberto, redesenha com os dados de agora: o clima e a
+        // previsão podem ter virado o dia com o cursor parado sobre o item.
+        var abertoClima = liClima.querySelector('.tooltip-card');
+        if (abertoClima) {
+          abertoClima.innerHTML = htmlTooltipClima(estado);
+          prenderTooltip(liClima, abertoClima);
+        }
+
+        // Adicionar evento de hover para criar tooltip
+        if (!liClima.hasAttribute('data-tooltip-ready')) {
+          liClima.setAttribute('data-tooltip-ready', 'true');
+
+          liClima.addEventListener('mouseenter', function() {
+            if (liClima.querySelector('.tooltip-card')) return;
+
+            var tooltipDiv = document.createElement('div');
+            tooltipDiv.className = 'tooltip-card tooltip-clima';
+            tooltipDiv.innerHTML = htmlTooltipClima(estado);
+
+            liClima.appendChild(tooltipDiv);
+            prenderTooltip(liClima, tooltipDiv);
+          });
+
+          liClima.addEventListener('mouseleave', function(e) {
+            // Verificar se o mouse saiu para o tooltip
+            var tooltip = liClima.querySelector('.tooltip-card');
+            if (!tooltip) return;
+            if (!saiuDoTooltip(e, tooltip)) return;
+            // Delay para permitir que o mouse entre no tooltip
+            aoSairDoItem(liClima);
+          });
+        }
+      }
+    }
+    
+    // Tooltip do tempo com dia e semana
+    var itemTempo = document.querySelector('[data-ui="icone-tempo"]');
+    if (itemTempo) {
+      var liTempo = itemTempo.closest('li');
+      if (liTempo) {
+        // Remover tooltip antigo se existir
+        var tooltipAntigo = liTempo.querySelector('.tooltip-card');
+        if (tooltipAntigo) tooltipAntigo.remove();
+        
+        liTempo.setAttribute('data-tooltip-html', 'true');
+        liTempo.removeAttribute('data-tooltip');
+        
+        // Já está aberto? atualiza a hora. Era aqui que nascia a divergência
+        // entre a hora grande do tooltip e a do HUD: o texto era escrito uma
+        // única vez, quando o mouse entrou, e ficava congelado ali.
+        var abertoTempo = liTempo.querySelector('.tooltip-card');
+        if (abertoTempo) {
+          abertoTempo.innerHTML = htmlTooltipTempo(estado);
+          prenderTooltip(liTempo, abertoTempo);
+        }
+
+        // Adicionar evento de hover para criar tooltip
+        if (!liTempo.hasAttribute('data-tooltip-ready')) {
+          liTempo.setAttribute('data-tooltip-ready', 'true');
+
+          liTempo.addEventListener('mouseenter', function() {
+            if (liTempo.querySelector('.tooltip-card')) return;
+
+            var tooltipDiv = document.createElement('div');
+            tooltipDiv.className = 'tooltip-card tooltip-tempo';
+            tooltipDiv.innerHTML = htmlTooltipTempo(estado);
+
+            liTempo.appendChild(tooltipDiv);
+            prenderTooltip(liTempo, tooltipDiv);
+          });
+
+          liTempo.addEventListener('mouseleave', function(e) {
+            // Verificar se o mouse saiu para o tooltip
+            var tooltip = liTempo.querySelector('.tooltip-card');
+            if (!tooltip) return;
+            if (!saiuDoTooltip(e, tooltip)) return;
+            // Delay para permitir que o mouse entre no tooltip
+            aoSairDoItem(liTempo);
+          });
+        }
+      }
+    }
+  }
+  
+  function getEmojiClima(clima) {
+    var emojis = {
+      'sol': '☀️',
+      'nublado': '☁️',
+      'chuva': '🌧️',
+      'tempestade': '⛈️'
+    };
+    return emojis[clima] || '🌤️';
+  }
+  
+  function getEmojiPeriodo(periodo) {
+    var emojis = {
+      'madrugada': '🌙',
+      'amanhecer': '🌅',
+      'dia': '☀️',
+      'entardecer': '🌇',
+      'noite': '🌃'
+    };
+    return emojis[periodo] || '🕐';
+  }
+  
+  function gerarCalendarioSemana(diaAtual) {
+    var dias = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+    var html = '';
+    for (var i = 0; i < 7; i++) {
+      var ativo = (i + 1) === diaAtual ? ' active' : '';
+      html += '<div class="cal-dia' + ativo + '">' + dias[i] + '</div>';
+    }
+    return html;
+  }
+
+  // Gera previsão de clima em HTML a partir da fila real do core.
+  // `fila[0]` é o dia de hoje (o mesmo que o jogo está usando) e os outros
+  // itens são os dias que ainda vão acontecer.
+  function gerarPrevisaoSemanalHTML(estado) {
+    var dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    var fila = C.previsaoClima(estado);
+    var html = '';
+
+    for (var i = 0; i < fila.length; i++) {
+      // o dia da semana acompanha a contagem de dias da partida
+      var diaIndex = (estado.dias - 1 + i) % 7;
+      var ativo = i === 0 ? ' active' : '';
+      var nome = dias[diaIndex];
+
+      html += '<div class="prev-dia' + ativo + '">' +
+        '<div class="prev-nome">' + nome + '</div>' +
+        '<div class="prev-emoji">' + getEmojiClima(fila[i]) + '</div>' +
+        '</div>';
+    }
+
+    return html;
   }
 
   function pintarInspetor() {
@@ -4823,7 +5368,6 @@
     var dados = [
       ["umidade", b.umidade],
       ["fert", b.fertilidade],
-      ["pol", b.poluicao],
     ];
     dados.forEach(function (par) {
       var pct = Math.round(par[1] * 100);
@@ -4832,15 +5376,67 @@
       if (txt) txt.textContent = pct + "%";
       if (bar) bar.style.width = pct + "%";
     });
+    
+    // Mostrar informações da plantação com timer visual
+    var cultivoEl = ui("insp-cultivo");
     if (b.cultivo) {
       var c = D.CULTURAS[b.cultivo.id];
-      ui("insp-cultivo").textContent =
-        c.nome + " - " + Math.round((b.cultivo.progresso / c.dias) * 100) + "%";
+      var progresso = Math.round((b.cultivo.progresso / c.dias) * 100);
+      var tempoRestante = c.dias - b.cultivo.progresso;
+      var horasRestantes = Math.floor(tempoRestante * 24);
+      var minutosRestantes = Math.floor((tempoRestante * 24 - horasRestantes) * 60);
+      
+      // Criar HTML com timer bonito
+      cultivoEl.innerHTML = 
+        '<div class="cultivo-info">' +
+        '<div class="cultivo-header">' +
+        '<span class="cultivo-emoji">' + getEmojiCultura(c.id) + '</span>' +
+        '<div class="cultivo-texto">' +
+        '<span class="cultivo-nome">' + c.nome + '</span>' +
+        '<span class="cultivo-status">' + (b.cultivo.pronto ? '✓ Pronto!' : 'Crescendo...') + '</span>' +
+        '</div>' +
+        '</div>' +
+        '<div class="cultivo-progresso">' +
+        '<div class="progresso-barra">' +
+        '<div class="progresso-fill" style="width: ' + progresso + '%; background: ' + getCulturaCor(c.id) + ';"></div>' +
+        '</div>' +
+        '<span class="progresso-texto">' + progresso + '%</span>' +
+        '</div>' +
+        (b.cultivo.pronto ? 
+          '<div class="cultivo-pronto">🌟 Colha agora!</div>' :
+          '<div class="cultivo-tempo">' +
+          '<span class="tempo-icone">⏱️</span>' +
+          '<span class="tempo-valor">' + 
+          (horasRestantes > 0 ? horasRestantes + 'h ' : '') + 
+          minutosRestantes + 'min' +
+          '</span>' +
+          '</div>'
+        ) +
+        '</div>';
     } else {
-      ui("insp-cultivo").textContent = b.bloqueado
+      cultivoEl.textContent = b.bloqueado
         ? "Sem acesso"
         : "Nenhum cultivo";
     }
+  }
+  
+  // Funções auxiliares para culturas
+  function getEmojiCultura(culturaId) {
+    var emojis = {
+      'milho': '🌽',
+      'soja': '🫘',
+      'trigo': '🌾',
+      'hortalica': '🥬',
+      'girassol': '🌻',
+      'feija': '🫘'
+    };
+    return emojis[culturaId] || '🌱';
+  }
+  
+  function getCulturaCor(culturaId) {
+    var cultura = D.CULTURAS[culturaId];
+    if (!cultura) return '#6f9a4a';
+    return '#' + cultura.cor.toString(16).padStart(6, '0');
   }
 
   function cartao(
@@ -5014,8 +5610,10 @@
   }
 
   var ICONES_INVENTARIO = {
+    maos: "✋",
     enxada: "🪓",
     regador: "💧",
+    machado: "🪓",
     trator: "🚜",
     tratorEletrico: "⚡",
     drone: "🚁",
@@ -5245,12 +5843,18 @@
 
   function laco(agora) {
     global.requestAnimationFrame(laco);
-    var dt = Math.min(0.12, (agora - relogioAnterior) / 1000 || 0);
+    // O teto de dt fica no core (D.DT_MAXIMO), que é quem decide como o
+    // relógio avança. Aqui só normalizamos para nunca passar valor negativo
+    // ou NaN no primeiro quadro, quando `relogioAnterior` ainda é 0.
+    var dt = (agora - relogioAnterior) / 1000;
+    if (!(dt > 0)) dt = 0;
     relogioAnterior = agora;
 
-    C.passoSimulacao(estado, dt);
+    var passo = C.passoSimulacao(estado, dt);
+    var mudouDia = !!(passo && passo.virouDia);
     passoCameraLivre(dt);
     var noite = aplicarLuz();
+    atualizarIluminacao(estado);
 
     if (noite || houveEstruturaNoturna) {
       grupoEstruturas.traverse(function (n) {
@@ -5746,9 +6350,9 @@
       }
     }
 
-    var mudouDia =
-      Math.floor(estado.relogio * 100) !==
-      Math.floor((estado.relogio - dt / D.DIA_SEGUNDOS) * 100);
+    // Antes isso comparava centésimos do relógio e chamava de "mudouDia", o que
+    // disparava salvar o jogo ~100x por dia. O certo é o retorno de
+    // passoSimulacao, que sabe exatamente quando o dia virou.
     if (mudouDia) {
       atualizarCena();
       atualizarUI();
@@ -5893,6 +6497,18 @@
     });
 
     global.addEventListener("pointermove", function (ev) {
+      // Atualizar informações do bloco ao passar o mouse
+      if (!arrastando && !modoConstrucao.ativo && !veiculo.ativo && !livre.ligado && estado) {
+        var blocoHover = pegar(ev.clientX, ev.clientY);
+        if (blocoHover) {
+          selecionado = blocoHover;
+          var pH = posicaoDe(blocoHover);
+          malhaSelecao.position.set(pH[0], 0.17, pH[2]);
+          malhaSelecao.visible = !blocoHover.bloqueado;
+          pintarInspetor();
+        }
+      }
+      
       if (
         modoConstrucao.ativo &&
         modoConstrucao.preview &&
@@ -6142,6 +6758,12 @@
           return;
         }
 
+        var modalInventario = ui("modal-inventario");
+        if (modalInventario && !modalInventario.hidden) {
+          modalInventario.hidden = true;
+          return;
+        }
+
         if (veiculo.ativo) {
           descerDoVeiculo();
           return;
@@ -6171,6 +6793,18 @@
         if (emCampo) return;
         ev.preventDefault();
         alternarLivre();
+        return;
+      }
+
+      if (ev.key === "Tab") {
+        ev.preventDefault();
+        var modalInventario = ui("modal-inventario");
+        if (modalInventario) {
+          modalInventario.hidden = !modalInventario.hidden;
+          if (!modalInventario.hidden) {
+            atualizarUI(); // Atualiza o inventário quando abre
+          }
+        }
         return;
       }
 
@@ -6249,6 +6883,35 @@
     if (modal) {
       modal.addEventListener("click", function (ev) {
         if (ev.target === modal) modal.hidden = true;
+      });
+    }
+
+    // Modal do inventário
+    var abrirInventario = ui("abrir-inventario");
+    if (abrirInventario) {
+      abrirInventario.addEventListener("click", function () {
+        var modalInventario = ui("modal-inventario");
+        if (modalInventario) {
+          modalInventario.hidden = false;
+          atualizarUI(); // Atualiza o inventário quando abre
+        }
+      });
+    }
+
+    var fecharInventario = ui("fechar-inventario");
+    if (fecharInventario) {
+      fecharInventario.addEventListener("click", function () {
+        var modalInventario = ui("modal-inventario");
+        if (modalInventario) {
+          modalInventario.hidden = true;
+        }
+      });
+    }
+
+    var modalInventario = ui("modal-inventario");
+    if (modalInventario) {
+      modalInventario.addEventListener("click", function (ev) {
+        if (ev.target === modalInventario) modalInventario.hidden = true;
       });
     }
 

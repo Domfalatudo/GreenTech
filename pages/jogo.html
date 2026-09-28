@@ -53,21 +53,75 @@
       overflow: hidden;
     }
 
-    header.site {
+    /* ==========================================================
+       HEADER COM AUTO-HIDE (estilo barra de tarefas do Windows)
+       Some sozinho depois de um tempo sem mexer o mouse e volta
+       assim que o cursor encosta na borda do topo da tela.
+       Os seletores usam "body >" de propósito: o styles/header.css
+       entra depois deste <style> e sem isso o position/animation
+       dele ganharia e congelaria o transform.
+       ========================================================== */
+    body > header.site {
       position: fixed;
-      top: 0;
+      top: env(safe-area-inset-top, 0px);
       left: 0;
       right: 0;
       z-index: 30;
       background: color-mix(in srgb, var(--white) 90%, transparent);
       backdrop-filter: blur(10px);
-      transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translate3d(0, 0, 0);
+      transition: transform 0.34s cubic-bezier(0.22, 0.61, 0.36, 1);
+      /* "backwards" (e nao "both") para a animacao de entrada terminar e
+         devolver o transform ao controle da regra de auto-hide */
+      animation: jogo-header-entra 480ms cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
       will-change: transform;
     }
 
-    /* header escondido (estilo "ocultar automaticamente" do Windows) */
-    header.site.header-escondido {
-      transform: translateY(-100%);
+    @keyframes jogo-header-entra {
+      from {
+        opacity: 0;
+        transform: translate3d(0, -14px, 0);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+      }
+    }
+
+    /* escondido: sobe a altura inteira + a faixa do notch */
+    body > header.site.header-escondido {
+      transform: translate3d(0, calc(-100% - env(safe-area-inset-top, 0px)), 0);
+    }
+
+    /* Sem hover (celular/tablet) nao existe mousemove: a faixa do topo
+       precisa virar area clicavel para o header voltar no toque. No
+       desktop ela fica sem pointer-events para nao roubar o clique do
+       jogo nos 18px do topo. */
+    .hot-zone-topo {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 18px;
+      z-index: 31;
+      background: transparent;
+      pointer-events: none;
+    }
+
+    @media (hover: none) {
+      body.header-escondido .hot-zone-topo {
+        pointer-events: auto;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      body > header.site,
+      body > header.site.header-escondido {
+        animation: none;
+        transition: none;
+      }
     }
 
     .nav-inner {
@@ -148,7 +202,7 @@
 
     .hud-bloco {
       grid-area: bloco;
-      min-height: 0;
+      min-height: 380px;
       display: flex;
     }
 
@@ -163,7 +217,7 @@
 
     /* informações: agora fica dentro do bloco central, logo acima das ferramentas */
     .hud-informacoes {
-      width: 100%;
+      width: 122%;
       min-width: 0;
       flex: 0 0 auto;
     }
@@ -224,6 +278,7 @@
     /* --- loja (topo da coluna esquerda) --- */
     .botao-loja {
       padding: 10px 0;
+      height: 44px;
       flex: 0 0 auto;
       border: none;
       background: linear-gradient(135deg, var(--dark) 0%, color-mix(in srgb, var(--dark) 90%, black) 100%);
@@ -376,16 +431,6 @@
       color: #7c3aed;
     }
 
-    .info-lista [data-icone="pegada"] {
-      background: linear-gradient(135deg, #d1fae5 0%, #6ee7b7 100%);
-    }
-    .info-lista [data-icone="pegada"]:hover {
-      background: linear-gradient(135deg, #d1fae5 0%, #34d399 100%);
-    }
-    .info-lista [data-icone="pegada"] svg {
-      color: #059669;
-    }
-
     .info-lista [data-ui="icone-tempo"] {
       background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
     }
@@ -417,6 +462,37 @@
       color: var(--dark);
       text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
     }
+    
+    /* Layout especial para o item de tempo com relógio */
+    .info-lista .tempo-info {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+    
+    .tempo-dia {
+      font-family: var(--serif);
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: var(--dark);
+    }
+    
+    .relogio-digital {
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      font-size: 1.15rem;
+      color: var(--dark);
+      background: linear-gradient(135deg, rgba(220, 239, 221, 0.4) 0%, rgba(220, 239, 221, 0.2) 100%);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(22, 51, 42, 0.15);
+      letter-spacing: 0.08em;
+      text-shadow: 0 1px 2px rgba(255, 255, 255, 0.9);
+      box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5);
+      min-width: 65px;
+      text-align: center;
+    }
 
     .info-lista .val.bom {
       color: #15803d;
@@ -436,6 +512,7 @@
       position: relative;
     }
 
+    /* Tooltip padrão (texto simples) */
     .info-lista li::after {
       content: attr(data-tooltip);
       position: absolute;
@@ -483,6 +560,302 @@
 
     .info-lista li:hover::before {
       opacity: 1;
+    }
+
+    /* Tooltips HTML personalizados (calendários) */
+    .info-lista li[data-tooltip-html]::after {
+      content: '';
+      display: none;
+    }
+
+    .info-lista li[data-tooltip-html]::before {
+      display: none;
+    }
+
+    .tooltip-card {
+      position: absolute;
+      bottom: calc(100% + 15px);
+      left: 50%;
+      transform: translateX(-50%) translateY(-10px) scale(0.95);
+      background: linear-gradient(135deg, #ffffff 0%, #f5f9f6 100%);
+      border: 2px solid var(--pale);
+      border-radius: 16px;
+      padding: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 12px 40px rgba(22, 51, 42, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+      z-index: 1001;
+      min-width: 360px;
+      max-width: 400px;
+      overflow: hidden;
+    }
+
+    .info-lista li[data-tooltip-html]:hover .tooltip-card {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+      pointer-events: auto;
+    }
+    
+    /* Manter tooltip visível quando o mouse está sobre ele */
+    .tooltip-card:hover {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .tooltip-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 18px 20px;
+      background: linear-gradient(135deg, var(--dark) 0%, #1a4034 100%);
+      border-bottom: 2px solid var(--pale);
+    }
+
+    .tooltip-emoji {
+      font-size: 2.5rem;
+      line-height: 1;
+      filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+      animation: floatEmoji 3s ease-in-out infinite;
+    }
+
+    @keyframes floatEmoji {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+
+    .tooltip-header h4 {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--pale);
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .tooltip-header p {
+      margin: 2px 0 0;
+      font-size: 0.75rem;
+      color: rgba(220, 239, 221, 0.85);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .tooltip-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 14px 16px;
+      background: rgba(220, 239, 221, 0.15);
+    }
+
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 8px;
+      background: white;
+      border-radius: 10px;
+      border: 1px solid var(--pale);
+      transition: all 0.2s ease;
+    }
+
+    .stat-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.1);
+      border-color: var(--dark);
+    }
+
+    .stat-item .label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .stat-item .value {
+      font-family: var(--serif);
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--dark);
+    }
+
+    .tooltip-divider {
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--pale) 20%, var(--pale) 80%, transparent);
+      margin: 0 16px;
+    }
+
+    .tooltip-card h5 {
+      margin: 14px 20px 10px;
+      font-family: var(--serif);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--dark);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* CALENDÁRIO DE PREVISÃO (Clima) */
+    .previsao-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 6px;
+      padding: 0 16px 18px;
+    }
+
+    .prev-dia {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 4px;
+      background: white;
+      border: 2px solid var(--pale);
+      border-radius: 10px;
+      transition: all 0.25s ease;
+      cursor: default;
+    }
+
+    .prev-dia:hover {
+      transform: translateY(-3px) scale(1.05);
+      box-shadow: 0 6px 16px rgba(22, 51, 42, 0.15);
+      border-color: var(--dark);
+      background: var(--pale-soft);
+    }
+
+    .prev-dia.active {
+      background: linear-gradient(135deg, var(--dark) 0%, #1a4034 100%);
+      border-color: var(--dark);
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.3);
+    }
+
+    .prev-dia.active .prev-nome {
+      color: var(--pale);
+      font-weight: 700;
+    }
+
+    /* dia atual: a previsão mostra hoje e os próximos 6 dias */
+    .prev-dia.active .prev-nome::after {
+      content: " · hoje";
+      font-weight: 500;
+      opacity: 0.75;
+    }
+
+    .prev-nome {
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .prev-emoji {
+      font-size: 1.4rem;
+      line-height: 1;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+    }
+
+    /* CALENDÁRIO DE TEMPO (Dia) */
+    .tooltip-time-display {
+      padding: 18px 20px;
+      text-align: center;
+      background: linear-gradient(135deg, rgba(220, 239, 221, 0.2) 0%, rgba(220, 239, 221, 0.05) 100%);
+    }
+
+    .big-time {
+      font-family: var(--serif);
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--dark);
+      line-height: 1;
+      text-shadow: 0 2px 8px rgba(22, 51, 42, 0.1);
+      margin-bottom: 12px;
+      letter-spacing: 0.05em;
+    }
+
+    .time-progress {
+      width: 100%;
+      height: 8px;
+      background: var(--pale);
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .time-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3f7a4a 0%, #6f9a4a 100%);
+      border-radius: 999px;
+      transition: width 0.5s ease;
+      box-shadow: 0 0 8px rgba(63, 122, 74, 0.5);
+      animation: shimmer 2s ease-in-out infinite;
+    }
+
+    @keyframes shimmer {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.15); }
+    }
+
+    .calendario-mini {
+      padding: 0 16px 18px;
+    }
+
+    .cal-header {
+      text-align: center;
+      font-family: var(--serif);
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 10px;
+      padding: 8px;
+      background: linear-gradient(135deg, rgba(220, 239, 221, 0.3) 0%, rgba(220, 239, 221, 0.1) 100%);
+      border-radius: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .cal-dias {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 5px;
+    }
+
+    .cal-dia {
+      aspect-ratio: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: white;
+      border: 2px solid var(--pale);
+      border-radius: 8px;
+      transition: all 0.2s ease;
+      cursor: default;
+    }
+
+    .cal-dia:hover {
+      transform: scale(1.1);
+      border-color: var(--dark);
+      background: var(--pale-soft);
+      box-shadow: 0 2px 8px rgba(22, 51, 42, 0.1);
+    }
+
+    .cal-dia.active {
+      background: linear-gradient(135deg, var(--dark) 0%, #1a4034 100%);
+      color: var(--pale);
+      border-color: var(--dark);
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.3);
+      animation: pulseDay 2s ease-in-out infinite;
+    }
+
+    @keyframes pulseDay {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.08); }
     }
 
     /* Container do HUD precisa permitir overflow do tooltip */
@@ -683,23 +1056,213 @@
       border-color: var(--danger);
     }
 
-    /* --- inventário do jogador (coluna direita) --- */
-    .hud-dir .cartao {
-      height: 100%;
+    /* --- inventário do jogador (coluna direita) - AGORA É BOTÃO DE MOCHILA --- */
+    .hud-dir {
+      grid-area: dir;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+    }
+
+    .botao-mochila {
+      width: 15rem;
+      height: 70px;
+      border: none;
+      background: linear-gradient(135deg, var(--dark) 0%, color-mix(in srgb, var(--dark) 90%, black) 100%);
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 6px 20px rgba(22, 51, 42, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: visible;
+      border-radius: 16px;
+    }
+
+    .botao-mochila::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 3px solid var(--dark);
+      opacity: 0;
+      transform: scale(0.9);
+      transition: all 0.3s ease;
+    }
+
+    .botao-mochila:hover::before {
+      opacity: 0.4;
+      transform: scale(1.1);
+    }
+
+    .botao-mochila svg {
+      width: 36px;
+      height: 36px;
+      color: var(--pale);
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+      transition: all 0.3s ease;
+    }
+
+    .botao-mochila:hover {
+      transform: translateY(-4px) scale(1.05);
+      box-shadow: 0 10px 30px rgba(22, 51, 42, 0.4);
+    }
+
+    .botao-mochila:hover svg {
+      transform: scale(1.1) rotate(-5deg);
+    }
+
+    .botao-mochila:active {
+      transform: translateY(-2px) scale(1.02);
+    }
+
+    /* Modal do Inventário */
+    .modal-inventario-card {
+      max-width: 600px;
+      width: 90vw;
+      max-height: 85vh;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .modal-inventario-card h2 {
+      font-family: var(--serif);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--dark);
+      margin: 0 0 24px;
+      padding-right: 40px;
+    }
+
+    .fechar-modal {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: var(--pale);
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.8rem;
+      line-height: 1;
+      color: var(--dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      font-weight: 300;
+    }
+
+    .fechar-modal:hover {
+      background: var(--dark);
+      color: var(--pale);
+      transform: rotate(90deg);
+    }
+
+    .inventario-secao {
+      margin-bottom: 28px;
+    }
+
+    .inventario-secao h3 {
+      font-family: var(--sans);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 12px;
+    }
+
+    .select-inventario {
+      width: 100%;
+      padding: 16px 20px;
+      border-radius: 16px;
+      border: 2px solid var(--pale);
+      background: var(--white);
+      color: var(--text);
+      font: inherit;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%235c7266'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+      background-size: 24px;
+      padding-right: 48px;
+    }
+
+    .select-inventario:hover {
+      border-color: var(--dark);
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.1);
+    }
+
+    .select-inventario:focus {
+      outline: none;
+      border-color: var(--dark);
+      box-shadow: 0 0 0 3px rgba(22, 51, 42, 0.1);
+    }
+
+    .lista-inventario-modal {
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
-    .hud-dir .cartao h2 {
-      margin: 0 0 8px;
+    .lista-inventario-modal .linha-inventario {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border: 2px solid var(--pale);
+      border-radius: 16px;
+      padding: 16px 20px;
+      background: var(--white);
+      transition: all 0.2s ease;
     }
 
-    .hud-dir .cartao h3 {
-      margin: 12px 0 6px;
-      font-size: 0.85rem;
+    .lista-inventario-modal .linha-inventario:hover {
+      border-color: var(--dark);
+      box-shadow: 0 4px 12px rgba(22, 51, 42, 0.08);
+      transform: translateX(4px);
     }
 
+    .lista-inventario-modal .linha-inventario .icone {
+      font-size: 2rem;
+      line-height: 1;
+      flex-shrink: 0;
+      width: 48px;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--pale-soft);
+      border-radius: 12px;
+    }
+
+    .lista-inventario-modal .linha-inventario .nome {
+      flex: 1;
+      min-width: 0;
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .lista-inventario-modal .linha-inventario .qtd {
+      font-family: var(--serif);
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--dark);
+      min-width: 2em;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .lista-inventario {
     .lista-inventario {
       display: flex;
       flex-direction: column;
@@ -755,9 +1318,6 @@
       text-align: center;
       padding: 12px 6px;
     }
-
-    /* o inspetor é o conteúdo principal do cartão do bloco */
-    .inspetor {
       position: static;
       width: auto;
       background: none;
@@ -825,10 +1385,6 @@
       background: #6f9a4a;
     }
 
-    .medidor.poluicao .barra span {
-      background: #a4402f;
-    }
-
     .inspetor .selo {
       display: inline-block;
       font-size: 0.7rem;
@@ -837,6 +1393,176 @@
       border: 1px solid var(--pale);
       color: var(--muted);
       margin-bottom: 12px;
+    }
+    
+    /* === TIMER DE CULTIVO === */
+    .cultivo-info {
+      margin-top: 14px;
+      padding: 14px;
+      background: linear-gradient(135deg, rgba(220, 239, 221, 0.3) 0%, rgba(220, 239, 221, 0.1) 100%);
+      border: 2px solid var(--pale);
+      border-radius: 12px;
+      animation: fadeIn 0.3s ease;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .cultivo-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    
+    .cultivo-emoji {
+      font-size: 2.5rem;
+      line-height: 1;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+      animation: bounce 2s ease-in-out infinite;
+    }
+    
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    
+    .cultivo-texto {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1;
+    }
+    
+    .cultivo-nome {
+      font-family: var(--serif);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--dark);
+      line-height: 1.2;
+    }
+    
+    .cultivo-status {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .cultivo-progresso {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .progresso-barra {
+      flex: 1;
+      height: 14px;
+      background: var(--pale);
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+      position: relative;
+    }
+    
+    .progresso-fill {
+      height: 100%;
+      border-radius: 999px;
+      transition: width 0.5s ease;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 8px rgba(111, 154, 74, 0.3);
+    }
+    
+    .progresso-fill::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 100%
+      );
+      animation: shimmerProgress 2s ease-in-out infinite;
+    }
+    
+    @keyframes shimmerProgress {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(200%); }
+    }
+    
+    .progresso-texto {
+      font-family: var(--serif);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--dark);
+      min-width: 45px;
+      text-align: right;
+    }
+    
+    .cultivo-tempo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px;
+      background: white;
+      border-radius: 10px;
+      border: 1px solid var(--pale);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+    }
+    
+    .tempo-icone {
+      font-size: 1.3rem;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.1); opacity: 0.8; }
+    }
+    
+    .tempo-valor {
+      font-family: 'Courier New', monospace;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--dark);
+      letter-spacing: 0.05em;
+    }
+    
+    .cultivo-pronto {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      background: linear-gradient(135deg, #6f9a4a 0%, #5a8a3a 100%);
+      color: white;
+      border-radius: 10px;
+      font-family: var(--serif);
+      font-size: 1rem;
+      font-weight: 700;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 4px 12px rgba(111, 154, 74, 0.3);
+      animation: pulseGlow 2s ease-in-out infinite;
+    }
+    
+    @keyframes pulseGlow {
+      0%, 100% { 
+        box-shadow: 0 4px 12px rgba(111, 154, 74, 0.3);
+        transform: scale(1);
+      }
+      50% { 
+        box-shadow: 0 6px 20px rgba(111, 154, 74, 0.5);
+        transform: scale(1.02);
+      }
     }
 
     .modal {
@@ -1984,6 +2710,9 @@
     </div>
   </header>
 
+  <!-- zona quente do topo: devolve o header quando o cursor encosta na borda -->
+  <div class="hot-zone-topo" data-hot-zone aria-hidden="true"></div>
+
   <div id="stage"></div>
 
   <div class="mira" data-ui="mira" hidden aria-hidden="true">
@@ -2037,12 +2766,6 @@
             </div>
             <div class="barra"><span data-ui="bar-fert"></span></div>
           </div>
-          <div class="medidor poluicao">
-            <div class="rot">
-              <span>Poluição</span><span data-ui="insp-pol">0%</span>
-            </div>
-            <div class="barra"><span data-ui="bar-pol"></span></div>
-          </div>
           <p class="coords" data-ui="insp-cultivo" style="margin: 10px 0 0">-</p>
         </aside>
       </div>
@@ -2085,13 +2808,16 @@
               </span>
               <span class="val" data-ui="agua">0</span>
             </li>
-            <li data-tooltip="Hora atual do dia na fazenda. O tempo avança automaticamente: madrugada, dia, entardecer e noite!">
+            <li>
               <span class="rot icone-info" data-ui="icone-tempo">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </span>
-              <span class="val" data-ui="tempo">-</span>
+              <span class="val tempo-info">
+                <span data-ui="tempo" class="tempo-dia">-</span>
+                <span data-ui="relogio-digital" class="relogio-digital">00:00</span>
+              </span>
             </li>
             <li data-tooltip="Seu nível atual de fazendeiro. Suba de nível ganhando XP com ações na fazenda!">
               <span class="rot icone-info" data-icone="nivel">
@@ -2109,15 +2835,7 @@
               </span>
               <span class="val" data-ui="xp">0</span>
             </li>
-            <li data-tooltip="Índice de pegada ecológica (0-100). Maior = fazenda mais sustentável! Aumenta com energia limpa, áreas nativas e baixa poluição.">
-              <span class="rot icone-info" data-icone="pegada">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M20.893 13.393l-1.135-1.135a2.252 2.252 0 01-.421-.585l-1.08-2.16a.414.414 0 00-.663-.107.827.827 0 01-.812.21l-1.273-.363a.89.89 0 00-.738 1.595l.587.39c.59.395.674 1.23.172 1.732l-.2.2c-.212.212-.33.498-.33.796v.41c0 .409-.11.809-.32 1.158l-1.315 2.191a2.11 2.11 0 01-1.81 1.025 1.055 1.055 0 01-1.055-1.055v-1.172c0-.92-.56-1.747-1.414-2.089l-.655-.261a2.25 2.25 0 01-1.383-2.46l.007-.042a2.25 2.25 0 01.29-.787l.09-.15a2.25 2.25 0 012.37-1.048l1.178.236a1.125 1.125 0 001.302-.795l.208-.73a1.125 1.125 0 00-.578-1.315l-.665-.332-.091.091a2.25 2.25 0 01-1.591.659h-.18c-.249 0-.487.1-.662.274a.931.931 0 01-1.458-1.137l1.411-2.353a2.25 2.25 0 00.286-.76m11.928 9.869A9 9 0 008.965 3.525m11.928 9.868A9 9 0 118.965 3.525" />
-                </svg>
-              </span>
-              <span class="val" data-ui="pegada">0</span>
-            </li>
-            <li data-tooltip="Condições climáticas atuais. Afeta crescimento das plantas, energia solar e abastecimento de água!">
+            <li>
               <span class="rot icone-info" data-ui="icone-clima">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 004.5 4.5H18a3.75 3.75 0 001.332-7.257 3 3 0 00-3.758-3.848 5.25 5.25 0 00-10.233 2.33A4.502 4.502 0 002.25 15z" />
@@ -2145,15 +2863,13 @@
       </aside>
     </div>
 
-    <!-- DIREITA: o que o jogador carrega -->
+    <!-- DIREITA: botão da mochila -->
     <div class="hud-dir">
-      <div class="cartao">
-        <h2>Inventário do jogador</h2>
-        <label class="sel" for="sel-semente">Semente na mao</label>
-        <select id="sel-semente" data-ui="semente"></select>
-        <h3>Equipamentos</h3>
-        <div class="lista-inventario" data-ui="inventario-jogador"></div>
-      </div>
+      <button class="botao-mochila" type="button" data-ui="abrir-inventario" aria-label="Abrir inventário">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -2161,6 +2877,24 @@
     <div class="modal-card">
       <h2 style="font-family: var(--serif); font-size: 1.4rem; margin: 0 0 20px; color: var(--dark);">Loja de Sementes</h2>
       <div data-ui="loja-conteudo"></div>
+    </div>
+  </div>
+
+  <!-- Modal do Inventário -->
+  <div class="modal" data-ui="modal-inventario" hidden>
+    <div class="modal-card modal-inventario-card">
+      <button class="fechar-modal" type="button" data-ui="fechar-inventario" aria-label="Fechar inventário">×</button>
+      <h2>Inventário do jogador</h2>
+      
+      <div class="inventario-secao">
+        <h3>SEMENTE NA MÃO</h3>
+        <select id="sel-semente" data-ui="semente" class="select-inventario"></select>
+      </div>
+
+      <div class="inventario-secao">
+        <h3>Equipamentos</h3>
+        <div class="lista-inventario-modal" data-ui="inventario-jogador"></div>
+      </div>
     </div>
   </div>
 
@@ -2174,44 +2908,171 @@
   <script src="../js/game-view.js"></script>
 
   <script>
-    // Header some sozinho e volta ao aproximar o mouse do topo (só nesta página)
+    // ======================================================================
+    // Header com auto-hide, no estilo da barra de tarefas do Windows:
+    // sai sozinho quando o cursor nao esta perto do topo e volta assim
+    // que o cursor encosta na borda (ou quando o foco/teclado chega nele).
+    // ======================================================================
     (function () {
+      'use strict';
+
       var header = document.querySelector('header.site');
       if (!header) return;
 
-      var ZONA_TOPO = 56; // px a partir do topo que já revela o header
-      var ATRASO_PARA_ESCONDER = 1200; // ms parado longe do topo até esconder
-      var timerEsconder = null;
+      var hotZone = document.querySelector('[data-hot-zone]');
+      var conta = header.querySelector('.account');
 
-      function mostrarHeader() {
+      var ZONA_TOPO = 18; // px do topo que ja contam como "chegou na borda"
+      var ATRASO_ESCONDER = 2000; // ms longe do topo antes de subir
+      var ATRASO_SAIR = 500; // ms com o cursor sobre o header antes de subir
+      var ATRASO_OCULOSIDADE = 6000; // ms sem mexer o mouse, some de qualquer jeito
+
+      var timerEsconder = null;
+      var timerOcioso = null;
+      var sobreHeader = false;
+      var menuAberto = false;
+
+      var toque = window.matchMedia('(hover: none)');
+
+      function temFocoDentro() {
+        return header.contains(document.activeElement) && document.activeElement !== document.body;
+      }
+
+      function menuDaContaAberto() {
+        if (!conta) return false;
+        var botao = conta.querySelector('.account-toggle');
+        return !!(botao && botao.getAttribute('aria-expanded') === 'true');
+      }
+
+      // Sobe o header de verdade.
+      function esconder() {
+        if (sobreHeader || temFocoDentro() || menuDaContaAberto()) return;
+        header.classList.add('header-escondido');
+        document.body.classList.add('header-escondido');
+      }
+
+      function mostrar() {
         header.classList.remove('header-escondido');
+        document.body.classList.remove('header-escondido');
+      }
+
+      function cancelarEsconder() {
         if (timerEsconder) {
           clearTimeout(timerEsconder);
           timerEsconder = null;
         }
       }
 
-      function agendarEsconderHeader() {
-        if (timerEsconder) clearTimeout(timerEsconder);
-        timerEsconder = setTimeout(function () {
-          header.classList.add('header-escondido');
-        }, ATRASO_PARA_ESCONDER);
+      function agendarEsconder(ms) {
+        cancelarEsconder();
+        timerEsconder = setTimeout(esconder, ms);
       }
 
-      document.addEventListener('mousemove', function (evento) {
+      function agendarOcioso() {
+        if (timerOcioso) clearTimeout(timerOcioso);
+        timerOcioso = setTimeout(esconder, ATRASO_OCULOSIDADE);
+      }
+
+      // mouse no topo => header a mostra
+      function aoMoverMouse(evento) {
+        agendarOcioso();
         if (evento.clientY <= ZONA_TOPO) {
-          mostrarHeader();
+          mostrar();
+          cancelarEsconder();
+        } else if (sobreHeader || temFocoDentro() || menuDaContaAberto()) {
+          mostrar();
         } else {
-          agendarEsconderHeader();
+          agendarEsconder(ATRASO_ESCONDER);
         }
+      }
+
+      document.addEventListener('mousemove', aoMoverMouse, { passive: true });
+
+      // qualquer rolagem/arrasto tambem passa pelo topo
+      window.addEventListener('scroll', function () {
+        mostrar();
+        agendarEsconder(ATRASO_ESCONDER);
+      }, { passive: true });
+
+      header.addEventListener('mouseenter', function () {
+        sobreHeader = true;
+        mostrar();
+        cancelarEsconder();
       });
 
-      header.addEventListener('mouseenter', mostrarHeader);
-      header.addEventListener('mouseleave', agendarEsconderHeader);
-      header.addEventListener('focusin', mostrarHeader);
+      header.addEventListener('mouseleave', function () {
+        sobreHeader = false;
+        agendarEsconder(ATRASO_SAIR);
+      });
 
-      // some pouco depois de carregar a página
-      agendarEsconderHeader();
+      // teclado: enquanto algo do header estiver focado ele fica a mostra
+      header.addEventListener('focusin', function () {
+        mostrar();
+        cancelarEsconder();
+      });
+
+      header.addEventListener('focusout', function () {
+        setTimeout(function () {
+          if (!temFocoDentro()) agendarEsconder(ATRASO_SAIR);
+        }, 0);
+      });
+
+      // menu da conta: enquanto aberto o header nao some
+      if (conta) {
+        conta.addEventListener('click', function () {
+          menuAberto = menuDaContaAberto();
+          mostrar();
+          if (menuAberto) cancelarEsconder();
+          else agendarEsconder(ATRASO_ESCONDER);
+        });
+
+        document.addEventListener('click', function () {
+          if (menuAberto && !menuDaContaAberto()) {
+            menuAberto = false;
+            agendarEsconder(ATRASO_ESCONDER);
+          }
+        });
+
+        conta.addEventListener('keydown', function (evento) {
+          if (evento.key === 'Escape' && menuAberto) {
+            menuAberto = false;
+            agendarEsconder(ATRASO_ESCONDER);
+          }
+        });
+      }
+
+      // toque: sem hover nao da para usar a zona quente, entao o header
+      // aparece no toque e fica enquanto o dedo nao encostar no topo
+      if (hotZone) {
+        hotZone.addEventListener('pointerdown', function (evento) {
+          if (evento.pointerType !== 'mouse') {
+            mostrar();
+            cancelarEsconder();
+            agendarEsconder(ATRASO_OCULOSIDADE);
+          }
+        });
+      }
+
+      if (toque.matches) {
+        // telas de toque: sobe depois de um tempo, sem comparar clientY
+        mostrar();
+        agendarEsconder(ATRASO_OCULOSIDADE);
+      } else {
+        // comecar perto do topo e fechar sozinho logo depois
+        agendarEsconder(ATRASO_ESCONDER);
+      }
+
+      // sair da aba / trocar de janela: esconde sem esperar
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          cancelarEsconder();
+          header.classList.add('header-escondido');
+          document.body.classList.add('header-escondido');
+        } else {
+          mostrar();
+          agendarEsconder(ATRASO_ESCONDER);
+        }
+      });
     })();
   </script>
 </body>

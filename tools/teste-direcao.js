@@ -86,20 +86,18 @@ ok('a construcao vizinha continua no lugar', vizinho.blocoX === X + 2 && vizinho
 
 console.log('\n[4] prepararAoPassar: o solo trabalhado por onde a maquina passa');
 const diesel = C.blocoEm(estado, X, Z);
-diesel.fertilidade = 0.4; diesel.umidade = 0.4; diesel.poluicao = 0;
+diesel.fertilidade = 0.4; diesel.umidade = 0.4;
 const energiaAntes = estado.energia;
 ok('trator antigo lavra o bloco', C.prepararAoPassar(estado, 'trator', diesel).ok === true);
 ok('fertilidade subiu', diesel.fertilidade > 0.4, diesel.fertilidade);
 ok('umidade subiu', diesel.umidade > 0.4, diesel.umidade);
 ok('diesel nao gasta energia', estado.energia === energiaAntes);
-ok('diesel polui o solo (trade-off do jogo)', diesel.poluicao > 0, diesel.poluicao);
 
 const limpo = C.blocoEm(estado, X, Z + 1);
-limpo.fertilidade = 0.4; limpo.umidade = 0.4; limpo.poluicao = 0.2;
+limpo.fertilidade = 0.4; limpo.umidade = 0.4;
 estado.energia = 12;
 ok('eletrico lavra o bloco', C.prepararAoPassar(estado, 'tratorEletrico', limpo).ok === true);
 ok('eletrico consome energia ao lavrar', estado.energia < 12, estado.energia);
-ok('eletrico nao polui', limpo.poluicao === 0.2, limpo.poluicao);
 estado.energia = 0;
 const semEnergia = C.prepararAoPassar(estado, 'tratorEletrico', C.blocoEm(estado, X, Z + 1));
 ok('eletrico sem energia e recusado', semEnergia.ok === false);

@@ -9,12 +9,11 @@
       x: x, z: z,
       umidade: 0.3,
       fertilidade: 0.4,
-      poluicao: 0.1,
       cultivo: null,
       estrutura: null,
       nativo: false,
       bloqueado: true,
-      arado: false  // NOVO: indica se o solo foi preparado com enxada/trator
+      arado: false
     };
   }
 
@@ -37,21 +36,22 @@
       agua: 25,
       aguaMax: 40,
       graos: Object.assign({}, D.SEMENTES_INICIAIS),
-      itens: { enxada: 1, regador: 1, arvore: 3, machado: 1 },
-      ferramenta: 'enxada',
+      itens: { maos: 1, enxada: 1, regador: 1, arvore: 3, machado: 1 },
+      ferramenta: 'maos',
       semente: 'milho',
       relogio: DIA_INICIO,
       clima: 'sol',
       dias: 1,
       estacao: 'manha',
       historico: [],
-      // Registro das construções do modo construção: uma entrada por item
-      // exposto no terreno. Guardar só o item aqui (e não mais nada) é o que
-      // fazia as construções sumirem ao recarregar a página.
       construcoes: [],
       estatisticas: { colhidas: 0, plantadas: 0, lotes: 1 }
     };
     aplicarEstadoLote(estado, centro, centro, 'mato');
+    // A previsão já nasce pronta: `previsao` guarda só os dias futuros, e o
+    // dia 1 do tooltip é o próprio `estado.clima`.
+    estado.previsao = [];
+    garantirPrevisao(estado);
     return estado;
   }
 
@@ -87,12 +87,10 @@
         if (!b) continue;
         b.umidade = modelo.umidade;
         b.fertilidade = modelo.fertilidade;
-        b.poluicao = modelo.poluicao;
         b.nativo = estadoId === 'mato';
         b.bloqueado = false;
         b.cultivo = null;
         b.estrutura = null;
-        // Terra boa já vem arada e pronta para plantar
         b.arado = estadoId === 'fertil';
       }
     }
@@ -118,31 +116,6 @@
       }
     }
     return lista;
-  }
-
-  function indiceDePegada(estado) {
-    var total = 0;
-    var conta = 0;
-    var nativos = 0;
-    estado.blocos.forEach(function (b) {
-      if (b.bloqueado) return;
-      conta++;
-      total += (b.fertilidade * 0.5 + b.umidade * 0.2 + (1 - b.poluicao) * 0.3);
-      if (b.nativo) nativos++;
-    });
-    if (!conta) return 0;
-    var base = (total / conta) * 100;
-    var bonus = conta ? Math.min(6, (nativos / conta) * 8) : 0;
-    var renovavel = Object.keys(estado.itens).reduce(function (s, id) {
-      var item = D.ENERGIA[id];
-      return s + (item && item.gera ? (item.gera.dia + item.gera.noite) : 0);
-    }, 0);
-    var fossseis = Object.keys(estado.itens).reduce(function (s, id) {
-      var item = D.EQUIPAMENTOS[id];
-      return s + (item && item.polui > 0 ? 1 : 0);
-    }, 0);
-    var energia = renovavel ? Math.min(18, renovavel * 1.6) - Math.min(14, fossseis * 3.5) : 0;
-    return Math.max(0, Math.min(100, Math.round(base + bonus + energia)));
   }
 
   function ganharXp(estado, pontos) {
@@ -178,16 +151,6 @@
 
   function temItem(estado, id) { return (estado.itens[id] || 0) > 0; }
 
-  // ===== MODO CONSTRUÇÃO =====
-  // MODELO DE ECONOMIA (documentado aqui e em game-view.js):
-  // `estado.itens` é o contador de PROPRIEDADE. Ele alimenta producaoEnergia(),
-  // indiceDePegada() e usarEquipamento(), ou seja, é o que define o efeito de
-  // jogo do equipamento. Expor o item no terreno NÃO consome a unidade: cada
-  // unidade comprada pode ter no máximo uma cópia construida, controlada por
-  // `estado.construcoes`. Se colocar no mapa decrementasse `estado.itens`, a
-  // máquina deixaria de gerar energia, de contar na pegada e de ser usada só
-  // porque virou decoração.
-  // Disponível para construir = estado.itens[id] - construções com esse id.
 
   function chaveConstrucao(c) { return c.blocoX + ':' + c.blocoZ; }
 
@@ -222,9 +185,6 @@
     return Math.max(0, (estado.itens[itemId] || 0) - contarConstrucoes(estado, itemId));
   }
 
-  // Regra única de ocupação de bloco, usada pelo preview (vermelho) e pela
-  // hora de soltar: um bloco livre recebe UMA construção e nunca em cima de
-  // cultivo ou de estrutura já existente.
   function conferirConstrucao(estado, bloco) {
     if (!bloco) return { ok: false, msg: 'Fora do terreno.' };
     if (bloco.bloqueado) return { ok: false, msg: 'Esse terreno ainda nao e seu.' };
@@ -240,10 +200,6 @@
     return { ok: true, msg: '' };
   }
 
-  // Higiene do save: descarta entradas invalidas (item desconhecido, fora da
-  // grade, terreno nao comprado, bloco ocupado ou construcao duplicada).
-  // Como a unidade nunca foi debitada de `estado.itens`, descartar uma
-  // entrada nao perde equipamento nenhum: so devolve a unidade ao disponivel.
   function normalizarConstrucoes(estado) {
     var lista = Array.isArray(estado.construcoes) ? estado.construcoes : [];
     var vistos = {};
@@ -271,26 +227,17 @@
   function aplicarEfeitoDeEstrutura(estado, estrutura, bloco) {
     var modelo = D.EQUIPAMENTOS[estrutura];
     if (!modelo) return;
-    if (modelo.polui) bloco.poluicao = Math.min(1, bloco.poluicao + modelo.polui * 0.35);
     if (modelo.refloresta) {
       bloco.nativo = true;
-      bloco.poluicao = Math.max(0, bloco.poluicao - 0.1);
     }
   }
 
-  // ===== MODO DIREÇÃO (subir no trator) =====
-  // O veículo dirigido continua sendo uma construção comum: a entrada em
-  // `estado.construcoes` só troca de bloco conforme o trator anda. Por isso
-  // a regra de ocupação é a MESMA da colocação: um bloco livre, uma
-  // construção, nunca em cima de cultivo ou de estrutura.
 
   function itemDirigivel(itemId) {
     var item = D.CONSTRUCOES && D.CONSTRUCOES.itens[itemId];
     return !!(item && item.dirigivel);
   }
 
-  // O que precisa ser verdade para o fazendeiro conseguir subir num item
-  // já colocado no terreno. Devolve { ok, msg } para virar aviso na tela.
   function conferirDirecao(estado, construcao) {
     if (!construcao) return { ok: false, msg: 'Nada para dirigir aqui.' };
     if (!itemDirigivel(construcao.itemId)) {
@@ -303,9 +250,6 @@
     return { ok: true, msg: '' };
   }
 
-  // Move a construção para outro bloco sem passar pelas regras de colocação:
-  // aqui a maquina ja esta andando, entao so a ocupacao do bloco importa.
-  // Devolve { ok, msg } e, quando ok, devolve tambem a construcao movida.
   function dirigirParaBloco(estado, construcao, blocoX, blocoZ) {
     if (!construcao) return { ok: false, msg: 'Veiculo desconhecido.' };
     if (construcao.blocoX === blocoX && construcao.blocoZ === blocoZ) {
@@ -316,8 +260,6 @@
     if (alvo.bloqueado) return { ok: false, msg: 'Esse terreno ainda nao e seu.' };
     if (alvo.cultivo) return { ok: false, msg: 'Ha cultivo nesse bloco.' };
     if (alvo.estrutura) return { ok: false, msg: 'Ja existe uma estrutura nesse bloco.' };
-    // Uma construcao so por bloco: o proprio veiculo e ignorado, os
-    // outros nao.
     var ocupadas = construcoesNoBloco(estado, blocoX, blocoZ);
     for (var i = 0; i < ocupadas.length; i++) {
       if (ocupadas[i] !== construcao) {
@@ -329,9 +271,6 @@
     return { ok: true, msg: '', construcao: construcao };
   }
 
-  // Efeito do solo por onde o veiculo passou. E o mesmo `prepara` de
-  // usarEquipamento(), mas em dose unitaria: o trator trabalha o bloco a
-  // bloco enquanto anda, entao o ganho e menor e nao leva raio.
   function prepararAoPassar(estado, itemId, bloco) {
     var modelo = D.EQUIPAMENTOS[itemId];
     if (!modelo || !modelo.prepara) return { ok: false, msg: '' };
@@ -341,12 +280,10 @@
       return { ok: false, msg: 'Energia insuficiente para o ' + modelo.nome + ' (' + custo + ' necessarios).' };
     }
     if (custo) estado.energia -= custo;
-    bloco.arado = true;  // MARCA O SOLO COMO ARADO (trator também)
-    // Limpa a mata nativa quando o trator passa
+    bloco.arado = true;
     if (bloco.nativo) bloco.nativo = false;
     bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.1);
     bloco.umidade = Math.min(1, bloco.umidade + 0.08);
-    if (modelo.polui) bloco.poluicao = Math.min(1, bloco.poluicao + modelo.polui * 0.4);
     return { ok: true, msg: '' };
   }
 
@@ -369,7 +306,6 @@
       var cultura = D.CULTURAS[estado.semente];
       if (!cultura) return { ok: false, msg: 'Escolha uma semente.' };
       
-      // VERIFICAÇÃO DE NÍVEL REMOVIDA
       
       if ((estado.graos[estado.semente] || 0) <= 0) {
         return { ok: false, msg: 'Sem sementes de ' + cultura.nome + '.' };
@@ -386,7 +322,7 @@
       if (bloco.umidade > 0.92) return { ok: false, msg: 'O solo ja esta encharcado.' };
       if (estado.agua <= 0) return { ok: false, msg: 'Sem agua guardada. A chuva ajuda.' };
       estado.agua -= 1;
-      bloco.umidade = Math.min(1, bloco.umidade + 0.3);
+      bloco.umidade = Math.min(1, bloco.umidade + 0.12);
       return { ok: true, msg: 'Bloco regado.', tipo: 'agua' };
     },
 
@@ -395,20 +331,8 @@
       if (estado.dinheiro < 8) return { ok: false, msg: 'Adubo custa $8.' };
       estado.dinheiro -= 8;
       bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.22);
-      bloco.poluicao = Math.max(0, bloco.poluicao - 0.2);
       ganharXp(estado, 4);
       return { ok: true, msg: 'Adubo organico aplicado.', tipo: 'adubo' };
-    },
-
-    despoluir: function (estado, bloco) {
-      if (bloco.poluicao < 0.05) return { ok: false, msg: 'Esse bloco nao tem residuo.' };
-      if (estado.dinheiro < 25) return { ok: false, msg: 'A limpeza custa $25.' };
-      if (estado.energia < 2) return { ok: false, msg: 'Precisa de 2 de energia.' };
-      estado.dinheiro -= 25;
-      estado.energia -= 2;
-      bloco.poluicao = Math.max(0, bloco.poluicao - 0.35);
-      ganharXp(estado, 6);
-      return { ok: true, msg: 'Residuos removidos.', tipo: 'limpeza' };
     },
 
     colher: function (estado, bloco) {
@@ -416,8 +340,7 @@
         return { ok: false, msg: 'Nada maduro para colher.' };
       }
       var cultura = D.CULTURAS[bloco.cultivo.id];
-      var bonus = 1 + (indiceDePegada(estado) / 100) * 0.6;
-      var valor = Math.round(cultura.vende * bonus * (0.6 + bloco.fertilidade * 0.6));
+      var valor = Math.round(cultura.vende * (0.6 + bloco.fertilidade * 0.6));
       estado.dinheiro += valor;
       estado.estatisticas.colhidas++;
       bloco.cultivo = null;
@@ -433,11 +356,14 @@
   };
 
   function usarEquipamento(estado, id, bloco) {
+    if (id === 'maos') {
+      return { ok: true, msg: 'Você está apenas observando.', tipo: 'nada' };
+    }
+    
     if (!temItem(estado, id)) return { ok: false, msg: 'Voce nao tem esse equipamento.' };
     var modelo = D.EQUIPAMENTOS[id];
     if (!modelo) return { ok: false, msg: 'Equipamento desconhecido.' };
     
-    // VERIFICAÇÃO DE NÍVEL REMOVIDA
     
     if (bloco.bloqueado) return { ok: false, msg: 'Esse lote ainda nao e seu.' };
 
@@ -481,8 +407,7 @@
       });
       return {
         ok: true,
-        msg: modelo.nome + ' preparou ' + afetados.length + ' bloco(s).' +
-          (modelo.polui ? ' O solo ficou mais poluido.' : ''),
+        msg: modelo.nome + ' preparou ' + afetados.length + ' bloco(s).',
         tipo: 'tractor'
       };
     }
@@ -494,23 +419,19 @@
       }
       bloco.estrutura = 'arvore';
       bloco.nativo = true;
-      bloco.poluicao = Math.max(0, bloco.poluicao - 0.15);
       ganharXp(estado, 5);
       return { ok: true, msg: 'Arvore nativa plantada.', tipo: 'arvore' };
     }
 
     if (id === 'regador') return AÇÕES.regar(estado, bloco);
     if (id === 'enxada') {
-      // Se tem plantação, COLHE primeiro (se estiver pronta) mas MANTÉM o arado
       if (bloco.cultivo) {
         if (bloco.cultivo.pronto) {
           var cultura = D.CULTURAS[bloco.cultivo.id];
-          var bonus = 1 + (indiceDePegada(estado) / 100) * 0.6;
-          var valor = Math.round(cultura.vende * bonus * (0.6 + bloco.fertilidade * 0.6));
+          var valor = Math.round(cultura.vende * (0.6 + bloco.fertilidade * 0.6));
           estado.dinheiro += valor;
           estado.estatisticas.colhidas++;
           bloco.cultivo = null;
-          // MANTÉM o arado após colher (não remove)
           bloco.umidade = Math.max(0, bloco.umidade - 0.12);
           var subiu = ganharXp(estado, cultura.xp);
           return {
@@ -524,17 +445,14 @@
         }
       }
       
-      // Se já está arado (sem plantação), DESARA (volta ao normal)
       if (bloco.arado) {
         bloco.arado = false;
-        bloco.nativo = true;  // Volta a ser nativo (verde)
+        bloco.nativo = true;
         return { ok: true, msg: 'Solo nivelado. Vegetacao retorna.', tipo: 'enxada' };
       }
       
-      // Se não está arado, ARA
       bloco.arado = true;
       bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.12);
-      // Limpa a mata nativa quando ara
       if (bloco.nativo) bloco.nativo = false;
       return { ok: true, msg: 'Solo preparado para plantio.', tipo: 'enxada' };
     }
@@ -565,10 +483,7 @@
     var modelo = D.EQUIPAMENTOS[id] || D.ENERGIA[id];
     if (!modelo) return { ok: false, msg: 'Item desconhecido.' };
     
-    // VERIFICAÇÃO DE NÍVEL REMOVIDA - só precisa de dinheiro
     
-    // PERMITIR COMPRAS MÚLTIPLAS: removida verificação que bloqueava compras repetidas
-    // Itens de ENERGIA podem ser comprados várias vezes com preço progressivo
     var ehItemEnergia = !!D.ENERGIA[id];
     if (ehItemEnergia && !D.EQUIPAMENTOS[id] && modelo.capacidade === undefined) {
       var extra = (estado.itens[id] || 0) + 1;
@@ -579,7 +494,6 @@
       return { ok: true, msg: modelo.nome + ' comprado por $' + preco + '.', tipo: 'compra' };
     }
     
-    // Todos os outros itens podem ser comprados múltiplas vezes pelo preço base
     if (estado.dinheiro < modelo.custo) {
       return { ok: false, msg: 'Faltam $' + (modelo.custo - estado.dinheiro) + '.' };
     }
@@ -608,12 +522,29 @@
     ganharXp(estado, 12 + modelo.bonus);
     return {
       ok: true,
-      msg: 'Lote liberado: ' + modelo.nome + (modelo.bonus ? ' (+' + modelo.bonus + ' pts ecologicos)' : '') + '.',
+      msg: 'Lote liberado: ' + modelo.nome + '.',
       tipo: 'expansao'
     };
   }
 
-  function sorteioClima(anterior) {
+  // ===== CICLO DO CLIMA =====
+  // A previsão semanal não é enfeite: o clima dos próximos dias é sorteado
+  // ANTES de acontecer e guardado em `estado.previsao`. Quando o dia vira,
+  // o clima real passa a ser o primeiro item dessa fila e um dia novo é
+  // sorteado no fim. Assim o que o jogador vê no tooltip é exatamente o que
+  // vai acontecer, e não um sorteio independente que nunca casaria.
+  // O peso do clima anterior continua pela metade, evitando dois dias
+  // iguais seguidos com frequência.
+  //
+  // `estado.clima` é SEMPRE o dia de hoje. `estado.previsao` guarda apenas os
+  // dias que ainda vão acontecer (amanhã em diante). Separar os dois é o que
+  // impede a fila de dessincronizar: não existe um índice que precisa "casar"
+  // com o clima atual, porque são coisas diferentes por desenho.
+
+  var DIAS_PREVISAO = 7;
+  var DIAS_FUTUROS = DIAS_PREVISAO - 1;
+
+  function sortearProximoClima(anterior) {
     var chaves = Object.keys(D.PESOS_CLIMA);
     var pesos = chaves.map(function (k) {
       return k === anterior ? D.PESOS_CLIMA[k] * 0.5 : D.PESOS_CLIMA[k];
@@ -625,6 +556,41 @@
       if (alvo <= 0) return chaves[i];
     }
     return 'sol';
+  }
+
+  // Completa a fila de dias futuros. Um save antigo chega sem `previsao` (ou
+  // com a fila curta) e é preenchido a partir do clima já salvo, sem que a
+  // fazenda seja perdida e sem inventar um dia diferente do que está valendo.
+  function garantirPrevisao(estado) {
+    if (!Array.isArray(estado.previsao)) estado.previsao = [];
+    // descarta lixo: só ids de clima que existem no jogo
+    estado.previsao = estado.previsao.filter(function (c) {
+      return !!D.CLIMAS[c];
+    });
+    while (estado.previsao.length < DIAS_FUTUROS) {
+      var anterior = estado.previsao.length
+        ? estado.previsao[estado.previsao.length - 1]
+        : estado.clima;
+      estado.previsao.push(sortearProximoClima(anterior));
+    }
+    if (estado.previsao.length > DIAS_FUTUROS) {
+      estado.previsao = estado.previsao.slice(0, DIAS_FUTUROS);
+    }
+    return estado.previsao;
+  }
+
+  // Vira o dia: o clima de hoje passa a ser o primeiro dia futuro, e um dia
+  // novo é sorteado no fim da fila. Usado só quando o relógio vira o dia.
+  function avancarPrevisao(estado) {
+    garantirPrevisao(estado);
+    estado.clima = estado.previsao.shift();
+    estado.previsao.push(sortearProximoClima(estado.clima));
+    return estado.clima;
+  }
+
+  // Os 7 dias que o tooltip mostra: hoje e os próximos.
+  function previsaoClima(estado) {
+    return [estado.clima].concat(garantirPrevisao(estado).slice(0, DIAS_FUTUROS));
   }
 
   function ehNoite(estado) {
@@ -667,14 +633,23 @@
   }
 
   function passoSimulacao(estado, dt) {
-    var anterior = estado.relogio;
-    estado.relogio += dt / D.DIA_SEGUNDOS;
+    // O `dt` chega do requestAnimationFrame e pode ser enorme: aba em segundo
+    // plano, máquina dormindo, travada. Sem este teto, um único quadro de 5
+    // segundos fazia o relógio saltar e o dia virar uma vez só, jogando fora
+    // todo o tempo no meio. Com o teto o mundo anda devagar em vez de
+    // teleportar, que é o comportamento previsível para o jogador.
+    if (!(dt > 0)) dt = 0;
+    var dtSeguro = Math.min(dt, D.DT_MAXIMO);
+
+    estado.relogio += dtSeguro / D.DIA_SEGUNDOS;
     var virouDia = false;
-    if (estado.relogio >= 1) {
+    // `while` e nao `if`: um dt grande pode atravessar mais de um dia inteiro
+    // e cada um precisa virar o dia (e puxar o clima da previsão) na ordem.
+    while (estado.relogio >= 1) {
       estado.relogio -= 1;
       estado.dias++;
       virouDia = true;
-      estado.clima = sorteioClima(estado.clima);
+      avancarPrevisao(estado);
     }
     estado.estacao = estacaoDe(estado);
 
@@ -703,17 +678,13 @@
 
       if (composto) {
         b.fertilidade = Math.min(1, b.fertilidade + 0.05 * passo);
-        b.poluicao = Math.max(0, b.poluicao - 0.05 * passo);
       }
       if (b.nativo) {
         b.fertilidade = Math.min(1, b.fertilidade + 0.015 * passo);
-        b.poluicao = Math.max(0, b.poluicao - 0.02 * passo);
       }
       if (b.umidade < 0.2) {
         b.fertilidade = Math.max(0, b.fertilidade - 0.012 * passo);
       }
-      // REMOVIDO: poluição não aumenta automaticamente mais
-      // b.poluicao = Math.min(1, b.poluicao + 0.006 * passo);
 
       if (b.cultivo && !b.cultivo.pronto) {
         var cultura = D.CULTURAS[b.cultivo.id];
@@ -744,11 +715,9 @@
     'agua', 'aguaMax', 'graos', 'itens', 'ferramenta', 'semente', 'relogio',
     'clima', 'dias', 'estatisticas'
   ];
-  // `construcoes` NÃO entra na lista de obrigatórios: assim um save anterior
   function migrarSave(dados) {
     if (!dados || !dados.blocos) return null;
     if (dados.blocos.length === D.GRADE * D.GRADE) return dados;
-    // Migração de save 12x12 (144 blocos) para 18x18 (324 blocos)
     if (dados.blocos.length === 144 && D.GRADE === 18) {
       try {
         var novo = estadoInicial();
@@ -763,7 +732,6 @@
         novo.itens = Object.assign({}, novo.itens, dados.itens || {});
         novo.estatisticas = Object.assign({}, novo.estatisticas, dados.estatisticas || {});
 
-        // Offset de centralização (18 - 12) / 2 = 3 blocos (= 1 lote)
         var offsetBloco = 3;
         var offsetLote = 1;
 
@@ -781,12 +749,11 @@
           if (destino) {
             destino.umidade = velho.umidade;
             destino.fertilidade = velho.fertilidade;
-            destino.poluicao = velho.poluicao;
             destino.cultivo = velho.cultivo;
             destino.estrutura = velho.estrutura;
             destino.nativo = velho.nativo;
             destino.bloqueado = velho.bloqueado;
-            destino.arado = velho.arado || false;  // Compatibilidade com saves antigos
+            destino.arado = velho.arado || false;
           }
         }
 
@@ -821,7 +788,6 @@
         return null;
       }
       if (!dados || !dados.blocos || dados.blocos.length !== D.GRADE * D.GRADE) return null;
-      // save antigo ou incompleto nao pode quebrar a partida: descarta
       for (var i = 0; i < CAMPOS_OBRIGATORIOS.length; i++) {
         if (dados[CAMPOS_OBRIGATORIOS[i]] === undefined || dados[CAMPOS_OBRIGATORIOS[i]] === null) {
           console.warn('Raiz: save incompleto, comecando uma fazenda nova.');
@@ -832,12 +798,15 @@
         var bloco = dados.blocos[b];
         if (!bloco || bloco.x === undefined || bloco.z === undefined ||
             bloco.umidade === undefined || bloco.fertilidade === undefined ||
-            bloco.poluicao === undefined || bloco.bloqueado === undefined) {
+            bloco.bloqueado === undefined) {
           console.warn('Raiz: bloco corrompido no save, comecando uma fazenda nova.');
           return null;
         }
       }
       normalizarConstrucoes(dados);
+      // Saves antigos não têm a fila de previsão: monta agora a partir do
+      // clima que já estava salvo, sem perder a fazenda.
+      garantirPrevisao(dados);
       return dados;
     } catch (erro) {
       console.warn('Raiz: nao consegui ler o save.', erro);
@@ -846,7 +815,7 @@
   }
 
   function apagar() {
-    try { global.localStorage.removeItem(D.CHAVE_SAVE); } catch (erro) { /* sem storage */ }
+    try { global.localStorage.removeItem(D.CHAVE_SAVE); } catch (erro) { }
   }
 
   function iniciar() {
@@ -866,8 +835,9 @@
     comprarItem: comprarItem,
     expandir: expandir,
     passoSimulacao: passoSimulacao,
+    previsaoClima: previsaoClima,
+    avancarPrevisao: avancarPrevisao,
     producaoEnergia: producaoEnergia,
-    indiceDePegada: indiceDePegada,
     ganharXp: ganharXp,
     ehNoite: ehNoite,
     estacaoDe: estacaoDe,
@@ -875,7 +845,6 @@
     lotesVizinhos: lotesVizinhos,
     chaveLote: chaveLote,
     temItem: temItem,
-    // modo construção
     conferirConstrucao: conferirConstrucao,
     construcaoNoBloco: construcaoNoBloco,
     construcoesNoBloco: construcoesNoBloco,
@@ -884,7 +853,6 @@
     construcoesDoItem: construcoesDoItem,
     chaveConstrucao: chaveConstrucao,
     normalizarConstrucoes: normalizarConstrucoes,
-    // modo direção (subir no trator)
     itemDirigivel: itemDirigivel,
     conferirDirecao: conferirDirecao,
     dirigirParaBloco: dirigirParaBloco,
