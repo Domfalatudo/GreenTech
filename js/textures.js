@@ -217,96 +217,484 @@
   }
 
   function drawRock(ctx, size, tone) {
-    ctx.fillStyle = tone.base;
+    // Base rochosa com gradiente
+    var rockGradient = ctx.createRadialGradient(size * 0.4, size * 0.4, 0, size / 2, size / 2, size * 0.8);
+    rockGradient.addColorStop(0, tone.light);
+    rockGradient.addColorStop(0.5, tone.base);
+    rockGradient.addColorStop(1, tone.ink);
+    ctx.fillStyle = rockGradient;
     ctx.fillRect(0, 0, size, size);
-    for (var i = 0; i < 700; i++) {
-      ctx.globalAlpha = 0.25 + random() * 0.4;
-      ctx.fillStyle = gray(85 + random() * 150);
+    
+    // Camadas geológicas
+    ctx.globalAlpha = 0.15;
+    for (var layer = 0; layer < 8; layer++) {
+      ctx.strokeStyle = gray(60 + random() * 100);
+      ctx.lineWidth = size * 0.004 + random() * size * 0.008;
       ctx.beginPath();
-      ctx.arc(random() * size, random() * size, 1 + random() * 3.5, 0, Math.PI * 2);
+      
+      var y = size * 0.1 + layer * size * 0.12;
+      var x = -size * 0.1;
+      ctx.moveTo(x, y);
+      
+      while (x < size * 1.1) {
+        x += size * 0.08;
+        y += (random() - 0.5) * size * 0.03;
+        ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    
+    // Grãos minerais grandes
+    for (var i = 0; i < 250; i++) {
+      var gx = random() * size;
+      var gy = random() * size;
+      var gr = 1 + random() * 4;
+      
+      ctx.globalAlpha = 0.3 + random() * 0.5;
+      var brightness = 70 + random() * 160;
+      
+      // Grão com pequeno brilho
+      var grain = ctx.createRadialGradient(gx - gr * 0.3, gy - gr * 0.3, 0, gx, gy, gr);
+      grain.addColorStop(0, gray(brightness + 40));
+      grain.addColorStop(0.5, gray(brightness));
+      grain.addColorStop(1, gray(brightness - 40));
+      
+      ctx.fillStyle = grain;
+      ctx.beginPath();
+      ctx.arc(gx, gy, gr, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = 0.45;
+    
+    // Cristais pequenos (quartzo, feldspato)
+    ctx.globalAlpha = 0.6;
+    for (var crystal = 0; crystal < 80; crystal++) {
+      var cx = random() * size;
+      var cy = random() * size;
+      var csize = size * (0.008 + random() * 0.018);
+      var cbrightness = 150 + random() * 105;
+      
+      ctx.fillStyle = gray(cbrightness);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(random() * Math.PI);
+      
+      ctx.beginPath();
+      ctx.moveTo(-csize, 0);
+      ctx.lineTo(0, -csize * 1.5);
+      ctx.lineTo(csize, 0);
+      ctx.lineTo(0, csize * 1.5);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.restore();
+    }
+    
+    // Fraturas e rachaduras maiores
+    ctx.globalAlpha = 0.4;
     ctx.strokeStyle = tone.ink;
-    ctx.lineWidth = 2;
-    for (var crack = 0; crack < 9; crack++) {
+    ctx.lineWidth = 1.5 + random() * 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    for (var crack = 0; crack < 12; crack++) {
       var x = random() * size;
       var y = random() * size;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      for (var step = 0; step < 5; step++) {
-        x += (random() - 0.5) * size * 0.25;
-        y += (random() - 0.5) * size * 0.25;
+      
+      for (var step = 0; step < 6; step++) {
+        var angle = random() * Math.PI * 2;
+        var dist = size * (0.05 + random() * 0.15);
+        x += Math.cos(angle) * dist;
+        y += Math.sin(angle) * dist;
         ctx.lineTo(x, y);
+        
+        // Bifurcação ocasional
+        if (random() > 0.75) {
+          var bx = x;
+          var by = y;
+          for (var b = 0; b < 2; b++) {
+            bx += (random() - 0.5) * size * 0.1;
+            by += (random() - 0.5) * size * 0.1;
+            ctx.lineTo(bx, by);
+          }
+          ctx.moveTo(x, y);
+        }
       }
       ctx.stroke();
     }
+    
+    // Rachaduras finas
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = 0.8 + random() * 1;
+    for (var fine = 0; fine < 20; fine++) {
+      var fx = random() * size;
+      var fy = random() * size;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      
+      for (var s = 0; s < 3; s++) {
+        fx += (random() - 0.5) * size * 0.12;
+        fy += (random() - 0.5) * size * 0.12;
+        ctx.lineTo(fx, fy);
+      }
+      ctx.stroke();
+    }
+    
+    // Poeira mineral fina
+    ctx.globalAlpha = 0.2;
+    for (var dust = 0; dust < 500; dust++) {
+      ctx.fillStyle = gray(80 + random() * 150);
+      ctx.beginPath();
+      ctx.arc(random() * size, random() * size, 0.3 + random() * 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.globalAlpha = 1;
   }
 
   function drawBark(ctx, size, tone) {
-    ctx.fillStyle = tone.base;
+    // Base com gradiente vertical (simula iluminação natural)
+    var barkGradient = ctx.createLinearGradient(0, 0, 0, size);
+    barkGradient.addColorStop(0, tone.light);
+    barkGradient.addColorStop(0.5, tone.base);
+    barkGradient.addColorStop(1, tone.ink);
+    ctx.fillStyle = barkGradient;
     ctx.fillRect(0, 0, size, size);
-    for (var i = 0; i < 42; i++) {
-      var x = random() * size;
-      var y = -10;
-      ctx.strokeStyle = random() > 0.5 ? tone.ink : tone.light;
-      ctx.globalAlpha = 0.18 + random() * 0.4;
-      ctx.lineWidth = 1 + random() * 4;
+    
+    // Fissuras verticais principais (características de casca de árvore)
+    ctx.strokeStyle = tone.ink;
+    ctx.lineWidth = size * 0.015;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 0.6;
+    
+    for (var i = 0; i < 12; i++) {
+      var x = (i + 0.5) * size / 12 + (random() - 0.5) * size * 0.08;
+      var y = -size * 0.05;
+      
       ctx.beginPath();
       ctx.moveTo(x, y);
-      while (y < size + 10) {
-        x += (random() - 0.5) * 10;
-        y += 10 + random() * 22;
+      
+      while (y < size * 1.05) {
+        var drift = (random() - 0.5) * size * 0.04;
+        x += drift;
+        y += size * 0.08 + random() * size * 0.04;
         ctx.lineTo(x, y);
+        
+        // Nós e protuberâncias ocasionais
+        if (random() > 0.85) {
+          var knotX = x + (random() - 0.5) * size * 0.06;
+          var knotY = y + (random() - 0.5) * size * 0.06;
+          ctx.lineTo(knotX, knotY);
+          ctx.lineTo(x, y);
+        }
       }
       ctx.stroke();
     }
+    
+    // Fissuras secundárias (horizontais e diagonais)
+    ctx.lineWidth = size * 0.008;
+    ctx.globalAlpha = 0.4;
+    
+    for (var j = 0; j < 25; j++) {
+      var startX = random() * size;
+      var startY = random() * size;
+      var angle = (random() - 0.5) * 0.8;
+      
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      
+      var length = size * (0.1 + random() * 0.2);
+      var endX = startX + Math.cos(angle) * length;
+      var endY = startY + Math.sin(angle) * length;
+      
+      ctx.quadraticCurveTo(
+        startX + (endX - startX) * 0.5 + (random() - 0.5) * size * 0.03,
+        startY + (endY - startY) * 0.5 + (random() - 0.5) * size * 0.03,
+        endX, endY
+      );
+      ctx.stroke();
+    }
+    
+    // Textura de fibras da madeira
+    ctx.globalAlpha = 0.25;
+    ctx.lineWidth = size * 0.003;
+    
+    for (var fiber = 0; fiber < 50; fiber++) {
+      ctx.strokeStyle = random() > 0.5 ? tone.ink : tone.light;
+      var fx = random() * size;
+      var fy = 0;
+      
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      
+      while (fy < size) {
+        fx += (random() - 0.5) * size * 0.02;
+        fy += size * 0.05 + random() * size * 0.05;
+        ctx.lineTo(fx, fy);
+      }
+      ctx.stroke();
+    }
+    
+    // Manchas de musgo e líquens
+    ctx.globalAlpha = 0.2;
+    for (var lichen = 0; lichen < 40; lichen++) {
+      var lx = random() * size;
+      var ly = random() * size;
+      var lr = size * (0.02 + random() * 0.05);
+      
+      var lichenGrad = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
+      lichenGrad.addColorStop(0, 'rgba(120, 140, 100, 0.5)');
+      lichenGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      
+      ctx.fillStyle = lichenGrad;
+      ctx.beginPath();
+      ctx.arc(lx, ly, lr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Cavidades e buracos de insetos
+    ctx.globalAlpha = 0.7;
+    for (var hole = 0; hole < 8; hole++) {
+      var hx = random() * size;
+      var hy = random() * size;
+      var hr = size * (0.008 + random() * 0.015);
+      
+      var holeGrad = ctx.createRadialGradient(hx, hy, 0, hx, hy, hr);
+      holeGrad.addColorStop(0, tone.ink);
+      holeGrad.addColorStop(1, tone.base);
+      
+      ctx.fillStyle = holeGrad;
+      ctx.beginPath();
+      ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Detalhe fino da textura
+    ctx.globalAlpha = 0.15;
+    for (var detail = 0; detail < 1000; detail++) {
+      ctx.fillStyle = gray(70 + random() * 160);
+      ctx.beginPath();
+      ctx.arc(random() * size, random() * size, 0.3 + random() * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.globalAlpha = 1;
   }
 
   function drawLeaf(ctx, size, tone) {
-    ctx.fillStyle = tone.base;
+    // Base com gradiente natural de folhagem
+    var leafGradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size);
+    leafGradient.addColorStop(0, tone.base);
+    leafGradient.addColorStop(1, tone.ink);
+    ctx.fillStyle = leafGradient;
     ctx.fillRect(0, 0, size, size);
+    
+    // Padrão de nervuras principais
     ctx.strokeStyle = tone.ink;
-    ctx.lineWidth = size * 0.012;
-    ctx.beginPath();
-    ctx.moveTo(size * 0.5, 0);
-    ctx.lineTo(size * 0.5, size);
-    ctx.stroke();
-    ctx.lineWidth = size * 0.006;
-    ctx.globalAlpha = 0.7;
-    for (var i = 1; i < 12; i++) {
-      var y = i * size / 12;
+    ctx.lineWidth = size * 0.008;
+    ctx.globalAlpha = 0.5;
+    
+    for (var main = 0; main < 5; main++) {
+      var startX = random() * size;
+      var startY = random() * size * 0.2;
       ctx.beginPath();
-      ctx.moveTo(size * 0.5, y);
-      ctx.quadraticCurveTo(size * 0.5 + size * 0.22, y - size * 0.05, size, y - size * 0.16);
+      ctx.moveTo(startX, startY);
+      
+      var x = startX;
+      var y = startY;
+      while (y < size) {
+        x += (random() - 0.5) * size * 0.08;
+        y += size * 0.12;
+        ctx.lineTo(x, y);
+      }
       ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(size * 0.5, y);
-      ctx.quadraticCurveTo(size * 0.5 - size * 0.22, y - size * 0.05, 0, y - size * 0.16);
-      ctx.stroke();
+      
+      // Nervuras secundárias
+      ctx.lineWidth = size * 0.004;
+      ctx.globalAlpha = 0.35;
+      var segments = Math.floor(y / (size * 0.12));
+      for (var seg = 1; seg < segments; seg++) {
+        var baseY = startY + seg * size * 0.12;
+        var baseX = startX + (seg * (random() - 0.5) * size * 0.08);
+        
+        // Nervura para direita
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.quadraticCurveTo(
+          baseX + size * 0.15, baseY + size * 0.05,
+          baseX + size * 0.25, baseY + size * 0.02
+        );
+        ctx.stroke();
+        
+        // Nervura para esquerda
+        ctx.beginPath();
+        ctx.moveTo(baseX, baseY);
+        ctx.quadraticCurveTo(
+          baseX - size * 0.15, baseY + size * 0.05,
+          baseX - size * 0.25, baseY + size * 0.02
+        );
+        ctx.stroke();
+      }
+      ctx.lineWidth = size * 0.008;
+      ctx.globalAlpha = 0.5;
     }
+    
+    // Manchas e variação de cor (simula clorofila irregular)
+    ctx.globalAlpha = 0.2;
+    for (var spot = 0; spot < 60; spot++) {
+      var sx = random() * size;
+      var sy = random() * size;
+      var sr = size * (0.02 + random() * 0.06);
+      
+      var spotGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+      spotGrad.addColorStop(0, random() > 0.5 ? tone.light : tone.ink);
+      spotGrad.addColorStop(1, 'rgba(0,0,0,0)');
+      
+      ctx.fillStyle = spotGrad;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Textura fina (células da folha)
+    ctx.globalAlpha = 0.15;
+    for (var cell = 0; cell < 800; cell++) {
+      ctx.fillStyle = gray(90 + random() * 140);
+      ctx.beginPath();
+      ctx.arc(random() * size, random() * size, 0.5 + random() * 1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.globalAlpha = 1;
   }
 
   function drawSoil(ctx, size, tone) {
-    ctx.fillStyle = tone.base;
+    // Base com gradiente sutil para profundidade
+    var gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size);
+    gradient.addColorStop(0, tone.base);
+    gradient.addColorStop(1, tone.ink);
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, size, size);
-    for (var i = 0; i < 420; i++) {
-      ctx.globalAlpha = 0.3 + random() * 0.45;
-      ctx.fillStyle = gray(75 + random() * 155);
+    
+    // Camada de partículas de terra grandes (torrões)
+    for (var i = 0; i < 120; i++) {
+      var x = random() * size;
+      var y = random() * size;
+      var radius = 4 + random() * 12;
+      var brightness = 60 + random() * 140;
+      
+      // Gradiente radial para cada torrão
+      var clump = ctx.createRadialGradient(x, y, 0, x, y, radius);
+      clump.addColorStop(0, gray(brightness + 20));
+      clump.addColorStop(0.6, gray(brightness));
+      clump.addColorStop(1, gray(brightness - 30));
+      
+      ctx.globalAlpha = 0.4 + random() * 0.5;
+      ctx.fillStyle = clump;
       ctx.beginPath();
-      ctx.arc(random() * size, random() * size, 2 + random() * 7, 0, Math.PI * 2);
+      // Torrões irregulares
+      for (var angle = 0; angle <= Math.PI * 2; angle += Math.PI / 4) {
+        var r = radius * (0.7 + random() * 0.6);
+        var px = x + Math.cos(angle) * r;
+        var py = y + Math.sin(angle) * r;
+        if (angle === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
       ctx.fill();
     }
-    ctx.globalAlpha = 0.45;
-    ctx.fillStyle = tone.ink;
-    for (var stone = 0; stone < 26; stone++) {
+    
+    // Partículas médias de terra
+    for (var j = 0; j < 300; j++) {
+      ctx.globalAlpha = 0.35 + random() * 0.4;
+      ctx.fillStyle = gray(70 + random() * 160);
       ctx.beginPath();
-      ctx.arc(random() * size, random() * size, 3 + random() * 5, 0, Math.PI * 2);
+      ctx.arc(random() * size, random() * size, 1.5 + random() * 5, 0, Math.PI * 2);
       ctx.fill();
     }
+    
+    // Partículas finas (poeira)
+    for (var k = 0; k < 600; k++) {
+      ctx.globalAlpha = 0.15 + random() * 0.25;
+      ctx.fillStyle = gray(80 + random() * 150);
+      ctx.beginPath();
+      ctx.arc(random() * size, random() * size, 0.5 + random() * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Pedras e pequenos detritos
+    ctx.globalAlpha = 0.5;
+    for (var stone = 0; stone < 35; stone++) {
+      var sx = random() * size;
+      var sy = random() * size;
+      var sr = 3 + random() * 7;
+      
+      ctx.fillStyle = gray(50 + random() * 80);
+      ctx.beginPath();
+      // Pedras irregulares
+      for (var a = 0; a <= Math.PI * 2; a += Math.PI / 3 + random() * 0.3) {
+        var dist = sr * (0.8 + random() * 0.4);
+        var px = sx + Math.cos(a) * dist;
+        var py = sy + Math.sin(a) * dist;
+        if (a === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      
+      // Destaque nas pedras
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = gray(140 + random() * 60);
+      ctx.beginPath();
+      ctx.arc(sx - sr * 0.2, sy - sr * 0.2, sr * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.5;
+    }
+    
+    // Rachaduras e fissuras no solo
+    ctx.globalAlpha = 0.2;
+    ctx.strokeStyle = tone.ink;
+    ctx.lineWidth = 1 + random();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    
+    for (var crack = 0; crack < 15; crack++) {
+      var cx = random() * size;
+      var cy = random() * size;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      
+      for (var seg = 0; seg < 4 + random() * 4; seg++) {
+        cx += (random() - 0.5) * size * 0.15;
+        cy += (random() - 0.5) * size * 0.15;
+        ctx.lineTo(cx, cy);
+        
+        // Ramificações ocasionais
+        if (random() > 0.7) {
+          var bx = cx;
+          var by = cy;
+          for (var b = 0; b < 2; b++) {
+            bx += (random() - 0.5) * size * 0.08;
+            by += (random() - 0.5) * size * 0.08;
+            ctx.lineTo(bx, by);
+          }
+          ctx.moveTo(cx, cy);
+        }
+      }
+      ctx.stroke();
+    }
+    
+    // Textura orgânica sutil (restos vegetais microscópicos)
+    ctx.globalAlpha = 0.15;
+    for (var org = 0; org < 200; org++) {
+      ctx.fillStyle = random() > 0.5 ? '#3a2a1a' : '#5a4a3a';
+      ctx.beginPath();
+      ctx.arc(random() * size, random() * size, 0.5 + random() * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
     ctx.globalAlpha = 1;
   }
 
@@ -410,10 +798,10 @@
     pcb: { draw: drawCircuit, relief: 1.4 },
     silicon: { draw: drawSilicon, relief: 1.2 },
     solar: { draw: drawSolar, relief: 1.6 },
-    rock: { draw: drawRock, relief: 2.6 },
-    bark: { draw: drawBark, relief: 2.2 },
-    leaf: { draw: drawLeaf, relief: 1.4 },
-    soil: { draw: drawSoil, relief: 2.8 },
+    rock: { draw: drawRock, relief: 3.5 },
+    bark: { draw: drawBark, relief: 2.8 },
+    leaf: { draw: drawLeaf, relief: 2.0 },
+    soil: { draw: drawSoil, relief: 3.2 },
     crystal: { draw: drawCrystal, relief: 1.8 },
     ripple: { draw: drawRipple, relief: 0.8 },
     globe: { draw: drawGlobe, relief: 0.7 },

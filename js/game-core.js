@@ -275,6 +275,82 @@
     }
   }
 
+  // ===== MODO DIREÇÃO (subir no trator) =====
+  // O veículo dirigido continua sendo uma construção comum: a entrada em
+  // `estado.construcoes` só troca de bloco conforme o trator anda. Por isso
+  // a regra de ocupação é a MESMA da colocação: um bloco livre, uma
+  // construção, nunca em cima de cultivo ou de estrutura.
+
+  function itemDirigivel(itemId) {
+    var item = D.CONSTRUCOES && D.CONSTRUCOES.itens[itemId];
+    return !!(item && item.dirigivel);
+  }
+
+  // O que precisa ser verdade para o fazendeiro conseguir subir num item
+  // já colocado no terreno. Devolve { ok, msg } para virar aviso na tela.
+  function conferirDirecao(estado, construcao) {
+    if (!construcao) return { ok: false, msg: 'Nada para dirigir aqui.' };
+    if (!itemDirigivel(construcao.itemId)) {
+      return { ok: false, msg: nomeDeItem(construcao.itemId) + ' nao se dirige.' };
+    }
+    var bloco = blocoEm(estado, construcao.blocoX, construcao.blocoZ);
+    if (!bloco || bloco.bloqueado) {
+      return { ok: false, msg: 'O terreno desse veiculo sumiu. Recoloque-o.' };
+    }
+    return { ok: true, msg: '' };
+  }
+
+  // Move a construção para outro bloco sem passar pelas regras de colocação:
+  // aqui a maquina ja esta andando, entao so a ocupacao do bloco importa.
+  // Devolve { ok, msg } e, quando ok, devolve tambem a construcao movida.
+  function dirigirParaBloco(estado, construcao, blocoX, blocoZ) {
+    if (!construcao) return { ok: false, msg: 'Veiculo desconhecido.' };
+    if (construcao.blocoX === blocoX && construcao.blocoZ === blocoZ) {
+      return { ok: true, msg: '', construcao: construcao };
+    }
+    var alvo = blocoEm(estado, blocoX, blocoZ);
+    if (!alvo) return { ok: false, msg: 'Fora do terreno.' };
+    if (alvo.bloqueado) return { ok: false, msg: 'Esse terreno ainda nao e seu.' };
+    if (alvo.cultivo) return { ok: false, msg: 'Ha cultivo nesse bloco.' };
+    if (alvo.estrutura) return { ok: false, msg: 'Ja existe uma estrutura nesse bloco.' };
+    // Uma construcao so por bloco: o proprio veiculo e ignorado, os
+    // outros nao.
+    var ocupadas = construcoesNoBloco(estado, blocoX, blocoZ);
+    for (var i = 0; i < ocupadas.length; i++) {
+      if (ocupadas[i] !== construcao) {
+        return { ok: false, msg: 'Ja tem uma construcao nesse bloco.' };
+      }
+    }
+    construcao.blocoX = blocoX;
+    construcao.blocoZ = blocoZ;
+    return { ok: true, msg: '', construcao: construcao };
+  }
+
+  // Efeito do solo por onde o veiculo passou. E o mesmo `prepara` de
+  // usarEquipamento(), mas em dose unitaria: o trator trabalha o bloco a
+  // bloco enquanto anda, entao o ganho e menor e nao leva raio.
+  function prepararAoPassar(estado, itemId, bloco) {
+    var modelo = D.EQUIPAMENTOS[itemId];
+    if (!modelo || !modelo.prepara) return { ok: false, msg: '' };
+    if (!bloco || bloco.bloqueado) return { ok: false, msg: '' };
+    var custo = modelo.energia ? Math.max(1, Math.round(modelo.energia * 0.34)) : 0;
+    if (custo && estado.energia < custo) {
+      return { ok: false, msg: 'Energia insuficiente para o ' + modelo.nome + ' (' + custo + ' necessarios).' };
+    }
+    if (custo) estado.energia -= custo;
+    bloco.fertilidade = Math.min(1, bloco.fertilidade + 0.1);
+    bloco.umidade = Math.min(1, bloco.umidade + 0.08);
+    if (modelo.polui) bloco.poluicao = Math.min(1, bloco.poluicao + modelo.polui * 0.4);
+    return { ok: true, msg: '' };
+  }
+
+  function nomeDeItem(itemId) {
+    var construcao = D.CONSTRUCOES && D.CONSTRUCOES.itens[itemId];
+    if (construcao) return construcao.nome;
+    var equip = D.EQUIPAMENTOS[itemId] || D.ENERGIA[itemId];
+    return equip ? equip.nome : itemId;
+  }
+
   var AÇÕES = {
     plantar: function (estado, bloco) {
       if (bloco.bloqueado) return { ok: false, msg: 'Esse lote ainda nao e seu.' };
@@ -764,6 +840,12 @@
     contarConstrucoes: contarConstrucoes,
     construcoesDoItem: construcoesDoItem,
     chaveConstrucao: chaveConstrucao,
-    normalizarConstrucoes: normalizarConstrucoes
+    normalizarConstrucoes: normalizarConstrucoes,
+    // modo direção (subir no trator)
+    itemDirigivel: itemDirigivel,
+    conferirDirecao: conferirDirecao,
+    dirigirParaBloco: dirigirParaBloco,
+    prepararAoPassar: prepararAoPassar,
+    nomeDeItem: nomeDeItem
   };
 })(window);

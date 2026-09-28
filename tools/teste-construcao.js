@@ -95,15 +95,17 @@ ok('sem somar: estado.itens continua 2', recarregado.itens.trator === 2);
 
 console.log('\n[7] higiene do save');
 const sujo = JSON.parse(JSON.stringify(recarregado));
-// 6,6 e 7,6 são blocos do lote do jogador (2,2 -> blocos 6..8).
-// 11,11 é de um lote não comprado: precisa sair.
+// A e B sao blocos do lote do jogador (o lote do centro, 3x3); C e de um
+// lote nao comprado e precisa sair na higiene do save.
+const A = b1.x, B = b1.z;
+const C2 = 0;   // canto oposto: o lote do jogador nao alcanca
 sujo.construcoes = [
-  { itemId: 'trator', blocoX: 6, blocoZ: 6, rotacao: 1 },
-  { itemId: 'trator', blocoX: 6, blocoZ: 6, rotacao: 2 },
-  { itemId: 'inexistente', blocoX: 7, blocoZ: 6, rotacao: 0 },
-  { itemId: 'trator', blocoX: 99, blocoZ: 6, rotacao: 0 },
-  { itemId: 'arvore', blocoX: 11, blocoZ: 11, rotacao: 0 },
-  { itemId: 'composteira', blocoX: 7, blocoZ: 6, rotacao: 7 },
+  { itemId: 'trator', blocoX: A, blocoZ: B, rotacao: 1 },
+  { itemId: 'trator', blocoX: A, blocoZ: B, rotacao: 2 },
+  { itemId: 'inexistente', blocoX: A + 1, blocoZ: B, rotacao: 0 },
+  { itemId: 'trator', blocoX: 99, blocoZ: B, rotacao: 0 },
+  { itemId: 'arvore', blocoX: C2, blocoZ: C2, rotacao: 0 },
+  { itemId: 'composteira', blocoX: A + 1, blocoZ: B, rotacao: 7 },
   null
 ];
 const limpas = C.normalizarConstrucoes(sujo);
@@ -134,9 +136,10 @@ C.apagar();
 const reiniciado = C.iniciar();
 ok('save apagado', store[D.CHAVE_SAVE] === undefined);
 ok('nova fazenda sem construcoes', reiniciado.construcoes.length === 0);
-ok('sem construcao, disponivel volta ao total (arvore x2 do inicio)',
-  C.construcoesDoItem(reiniciado, 'arvore') === 2);
-ok('dinheiro voltou ao inicial', reiniciado.dinheiro === 320, reiniciado.dinheiro);
+ok('sem construcao, disponivel volta ao total (arvore do inicio)',
+  C.construcoesDoItem(reiniciado, 'arvore') === reiniciado.itens.arvore,
+  reiniciado.itens.arvore);
+ok('dinheiro voltou ao inicial', reiniciado.dinheiro === 450, reiniciado.dinheiro);
 
 console.log(falhas ? '\nFALHAS: ' + falhas : '\nTODOS OS TESTES PASSARAM');
 process.exit(falhas ? 1 : 0);

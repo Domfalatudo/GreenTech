@@ -25,8 +25,8 @@ window.RaizJogo = (function () {
   var EQUIPAMENTOS = {
     enxada: { id: 'enxada', nome: 'Enxada', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'enxada', desc: 'Ferramenta manual. Prepara o solo.', energia: 0, polui: 0 },
     regador: { id: 'regador', nome: 'Regador', aba: 'equipamentos', custo: 0, nivel: 1, icone: 'regador', desc: 'Molha um bloco à mão.', energia: 0, polui: 0 },
-    trator: { id: 'trator', nome: 'Trator antigo', aba: 'equipamentos', custo: 180, nivel: 2, icone: 'trator', desc: 'Prepara 4 blocos de uma vez. Queima diesel e polui o solo.', energia: 0, polui: 0.22, raio: 2, prepara: true },
-    tratorEletrico: { id: 'tratorEletrico', nome: 'Trator elétrico', aba: 'equipamentos', custo: 460, nivel: 4, icone: 'trator', desc: 'Prepara 4 blocos sem emitir nada. Consome energia.', energia: 3, polui: 0, raio: 2, prepara: true },
+    trator: { id: 'trator', nome: 'Trator antigo', aba: 'equipamentos', custo: 180, nivel: 2, icone: 'trator', desc: 'Prepara 4 blocos de uma vez. Queima diesel e polui o solo. Exposto no terreno, dá para subir e dirigir.', energia: 0, polui: 0.22, raio: 2, prepara: true },
+    tratorEletrico: { id: 'tratorEletrico', nome: 'Trator elétrico', aba: 'equipamentos', custo: 460, nivel: 4, icone: 'trator', desc: 'Prepara 4 blocos sem emitir nada. Consome energia. Exposto no terreno, dá para subir e dirigir.', energia: 3, polui: 0, raio: 2, prepara: true },
     drone: { id: 'drone', nome: 'Drone de semeadura', aba: 'equipamentos', custo: 620, nivel: 5, icone: 'drone', desc: 'Planta 3 blocos ao mesmo tempo. Gasta energia.', energia: 5, polui: 0, planta: true, raio: 1 },
     colheitadeira: { id: 'colheitadeira', nome: 'Colheitadeira solar', aba: 'equipamentos', custo: 780, nivel: 6, icone: 'colheitadeira', desc: 'Colhe 4 blocos maduros de uma vez. Movida a energia solar.', energia: 4, polui: 0, colhe: true, raio: 2 },
     gotejamento: { id: 'gotejamento', nome: 'Irrigação gotejamento', aba: 'equipamentos', custo: 240, nivel: 3, icone: 'gota', desc: 'Mantém a umidade alta nos 4 blocos vizinhos, o dia todo.', energia: 1, polui: 0, raio: 2,_passivo: true },
@@ -60,14 +60,19 @@ window.RaizJogo = (function () {
   // de cada modelo: é o que alimenta a colisão do personagem em game-view.js.
   //   raio   -> raio de colisão em blocos (TILE = 1)
   //   altura -> altura do modelo, usada no teste de colisão vertical
+  //   dirigivel -> o fazendeiro pode subir e dirigir esse modelo no terreno
+  //   velMax/velAcc/velVir/velPivo -> unidades por segundo e radianos por
+  //   segundo do veículo dirigido. `velPivo` é o giro com o trator parado:
+  //   sem ele, alinhar a máquina para sair de um canto exige refazer a
+  //   manobra, e dirigir fica mais lento que andar a pé.
   var CONSTRUCOES = {
     // Limite de construções por lote. null = sem limite artificial:
     // a regra real é "um bloco livre recebe no máximo uma construção",
     // ou seja, até LOTE * LOTE (9) construções num lote de 3x3.
     limitePorLote: null,
     itens: {
-      trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.42, altura: 0.68 },
-      tratorEletrico: { nome: 'Trator Elétrico', emoji: '⚡', raio: 0.42, altura: 0.68 },
+      trator: { nome: 'Trator Antigo', emoji: '🚜', raio: 0.42, altura: 0.68, dirigivel: true, velMax: 4.8, velAcc: 12, velVir: 3.4, velPivo: 2.0, volta: true },
+      tratorEletrico: { nome: 'Trator Elétrico', emoji: '⚡', raio: 0.42, altura: 0.68, dirigivel: true, velMax: 6.2, velAcc: 16, velVir: 4.0, velPivo: 2.6, volta: true },
       drone: { nome: 'Drone', emoji: '🚁', raio: 0.35, altura: 0.55 },
       colheitadeira: { nome: 'Colheitadeira', emoji: '🌾', raio: 0.46, altura: 0.78 },
       gotejamento: { nome: 'Irrigação', emoji: '💧', raio: 0.34, altura: 0.28 },
